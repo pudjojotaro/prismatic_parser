@@ -1030,16 +1030,17 @@ def compare_item_with_gem(item_data, gem_data):
             logging.debug(f"No buy orders available for gem: {gem_data['name']}")
             return {"is_profitable": False}
 
-        highest_buy_order_price = buy_orders[0][0]  # Access first price
-        logging.debug(f"Highest buy order price: {highest_buy_order_price}")
+        prismatic_highest_buy_order = buy_orders[0][0]  # Access first price
+        logging.debug(f"Highest buy order price: {prismatic_highest_buy_order}")
 
         # Determine if the item price is below the buy order price minus fees
-        is_profitable = item_price < highest_buy_order_price * (1 - steam_fee - target_profit)
+        is_profitable = item_price < prismatic_highest_buy_order * (1 - steam_fee - target_profit)
         comparison_result = {
             "item_id": item_data['id'],
-            "gem_name": gem_data['name'],
             "item_price": item_price,
-            "highest_buy_order_price": highest_buy_order_price,
+            "prismatic_gem_price": prismatic_highest_buy_order,
+            "ethereal_gem_price": 0,
+            "combined_gem_price": prismatic_highest_buy_order,
             "is_profitable": is_profitable,
             "timestamp": time.time()
         }
