@@ -996,6 +996,11 @@ def synchronize_and_compare(item_id):
         send_profitable_item_alert(comparison_result, action)
     else:
         logging.debug(f"Item not profitable: {comparison_result}")
+        action = remove_comparison_if_not_profitable(comparison_result)
+        if action == "removed":
+            logging.info(f"Non-profitable comparison for item_id {comparison_result['item_id']} was removed.")
+        elif action == "not_found":
+            logging.debug(f"No comparison found to remove for item_id {comparison_result['item_id']}.")
 
 
 
@@ -1192,6 +1197,49 @@ def write_comparison_to_db(comparison_result):
     # Log the action performed
     logging.info(f"Comparison for item_id {comparison_result.get('item_id')} was {action}. Expected profit: {expected_profit:.2f}")
     return action  # Return whether it was inserted or updated
+
+
+def remove_comparison_if_not_profitable(comparison_result):
+    """
+    Removes the comparison result from the comparisons database if the item is not profitable.
+
+    Parameters:
+        comparison_result (dict): The comparison data.
+
+    Returns:
+        str: "removed" if the entry was deleted, "not_found" if no entry was found.
+    """
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # Check if an entry with the same item_id already exists
+        cursor.execute("SELECT COUNT(*) FROM comparisons WHERE item_id = ?", (comparison_result.get("item_id"),))
+        exists = cursor.fetchone()[0] > 0
+
+        if exists:
+            if not comparison_result["is_profitable"]:
+                # Delete the entry if the item is not profitable
+                cursor.execute("DELETE FROM comparisons WHERE item_id = ?", (comparison_result.get("item_id"),))
+                conn.commit()
+                action = "removed"
+                logging.info(f"Comparison for item_id {comparison_result.get('item_id')} was removed as it was not profitable.")
+            else:
+                action = "not_removed"
+                logging.debug(f"Comparison for item_id {comparison_result.get('item_id')} was not removed as it is profitable.")
+        else:
+            action = "not_found"
+            logging.debug(f"No comparison found for item_id {comparison_result.get('item_id')} to remove.")
+
+    except Exception as e:
+        logging.error(f"Error while attempting to remove comparison for item_id {comparison_result.get('item_id')}: {e}")
+        action = "error"
+
+    finally:
+        conn.close()
+
+    return action
+
 
 
 
