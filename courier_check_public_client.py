@@ -17,6 +17,7 @@ from collections import defaultdict
 import logging
 import sqlite3
 from datetime import datetime, timedelta
+from telegram_bot import event_trigger, background_bot_polling
 
 # Global rate limit configuration
 REQUEST_DELAY = 10  # Delay between individual requests for each worker
@@ -291,7 +292,6 @@ def process_histogram(histogram):
 
 
 # Worker Function to Fetch Order Histogram and Activity
-# Worker Function to Fetch Order Histogram and Activity
 async def fetch_gem_data_worker(gem_task_queue, proxy):
     """
     Worker function to process tasks for fetching gem data.
@@ -479,62 +479,6 @@ async def fetch_total_listings(client, item):
         return 0
 
 
-def update_item_in_db(item_id, name, price, ethereal_gem, prismatic_gem):
-    """
-    Updates or inserts an item into the items database.
-
-    Parameters:
-        item_id (str): The unique ID of the item.
-        name (str): The name of the item.
-        price (float): The price of the item.
-        ethereal_gem (str): The name of the ethereal gem associated with the item.
-        prismatic_gem (str): The name of the prismatic gem associated with the item.
-    """
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-
-    # Use INSERT OR REPLACE to update existing entries or insert new ones
-    cursor.execute("""
-    INSERT OR REPLACE INTO items (id, name, price, ethereal_gem, prismatic_gem, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        item_id, name, price, ethereal_gem, prismatic_gem, time.time(),  # Use the current time as the timestamp
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-def fetch_item_from_db(item_id):
-    """
-    Fetches an item's details from the database by its ID.
-
-    Parameters:
-        item_id (str): The unique ID of the item to fetch.
-
-    Returns:
-        dict: A dictionary containing the item's details if found, or None if not found.
-    """
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-
-    # Fetch the item by ID
-    cursor.execute("SELECT * FROM items WHERE id = ?", (item_id,))
-    item = cursor.fetchone()
-    conn.close()
-
-    # If the item exists, convert it into a dictionary
-    if item:
-        return {
-            "id": item[0],
-            "name": item[1],
-            "price": item[2],
-            "ethereal_gem": item[3],
-            "prismatic_gem": item[4],
-            "timestamp": item[5]
-        }
-    return None
-
 
 def update_gem_in_db(gem_name, buy_orders):
     """
@@ -591,34 +535,6 @@ def fetch_gem_from_db(gem_name):
     return None
 
 
-def fetch_all_items_from_db():
-    """
-    Fetches all items from the items database.
-
-    Returns:
-        list: A list of dictionaries, each containing an item's details.
-    """
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-
-    # Fetch all rows from the items table
-    cursor.execute("SELECT * FROM items")
-    all_items = cursor.fetchall()
-    conn.close()
-
-    # Convert each row into a dictionary
-    return [
-        {
-            "id": item[0],
-            "name": item[1],
-            "price": item[2],
-            "ethereal_gem": item[3],
-            "prismatic_gem": item[4],
-            "timestamp": item[5]
-        } for item in all_items
-    ]
-
-
 def fetch_all_gems_from_db():
     """
     Fetches all gems from the gems database.
@@ -643,32 +559,6 @@ def fetch_all_gems_from_db():
             "timestamp": gem[3]
         } for gem in all_gems
     ]
-async def fetch_total_listings(client, item):
-    """
-    Fetches the total number of listings for a given item.
-
-    Parameters:
-        client (SteamPublicClient): The Steam client used for fetching listings.
-        item (str): The name or ID of the item to fetch listings for.
-
-    Returns:
-        int: The total number of listings for the specified item.
-             Returns 0 if an error occurs.
-    """
-    try:
-        # Fetch the first batch of listings to determine the total count
-        _, total_count, _ = await client.get_item_listings(
-            item,
-            App.DOTA2,
-            count=LISTINGS_PER_REQUEST,  # Limit the number of listings per request
-            start=0  # Start from the first listing
-        )
-        print(f"Total listings for '{item}': {total_count}")
-        return total_count
-    except Exception as e:
-        # Handle and log errors
-        print(f"Error fetching total listings for '{item}': {e}")
-        return 0
 
 
 def update_item_in_db(item_id, name, price, ethereal_gem, prismatic_gem):
@@ -728,60 +618,6 @@ def fetch_item_from_db(item_id):
     return None
 
 
-def update_gem_in_db(gem_name, buy_orders):
-    """
-    Updates or inserts gem data into the gems database.
-
-    Parameters:
-        gem_name (str): The name of the gem.
-        buy_orders (list): A list of buy orders for the gem.
-    """
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-
-    # Use INSERT OR REPLACE to update existing entries or insert new ones
-    cursor.execute("""
-    INSERT OR REPLACE INTO gems (name, buy_orders, buy_order_length, timestamp)
-    VALUES (?, ?, ?, ?)
-    """, (
-        gem_name,
-        json.dumps(buy_orders),  # Convert buy_orders to a JSON string for storage
-        len(buy_orders),  # Store the number of buy orders
-        time.time()  # Use the current time as the timestamp
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-def fetch_gem_from_db(gem_name):
-    """
-    Fetches a gem's details from the database by its name.
-
-    Parameters:
-        gem_name (str): The name of the gem to fetch.
-
-    Returns:
-        dict: A dictionary containing the gem's details if found, or None if not found.
-    """
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-
-    # Fetch the gem by name
-    cursor.execute("SELECT * FROM gems WHERE name = ?", (gem_name,))
-    gem = cursor.fetchone()
-    conn.close()
-
-    # If the gem exists, convert it into a dictionary
-    if gem:
-        return {
-            "name": gem[0],
-            "buy_orders": json.loads(gem[1]),  # Parse the JSON string back into a Python list
-            "buy_order_length": gem[2],
-            "timestamp": gem[3]
-        }
-    return None
-
 
 def fetch_all_items_from_db():
     """
@@ -809,38 +645,10 @@ def fetch_all_items_from_db():
             "timestamp": item[5]
         } for item in all_items
     ]
-
-
-def fetch_all_gems_from_db():
-    """
-    Fetches all gems from the gems database.
-
-    Returns:
-        list: A list of dictionaries, each containing a gem's details.
-    """
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-
-    # Fetch all rows from the gems table
-    cursor.execute("SELECT * FROM gems")
-    all_gems = cursor.fetchall()
-    conn.close()
-
-    # Convert each row into a dictionary
-    return [
-        {
-            "name": gem[0],
-            "buy_orders": json.loads(gem[1]),  # Parse the JSON string back into a Python list
-            "buy_order_length": gem[2],
-            "timestamp": gem[3]
-        } for gem in all_gems
-    ]
-
-
 
 
 # Update `real_time_item_storage` with listings data
-def update_real_time_item_storage(item, listings_df):
+def update_db_item_storage(item, listings_df):
     """
     Update the real-time item storage with new listings data for a specific item.
     Only stores items with valid gem data.
@@ -909,7 +717,7 @@ async def fetch_listings_for_item_range(client, item, start, proxy, last_modifie
             print(f"[Worker {proxy}] Listings Data:\n{df.to_string(index=False)}")
 
             # Update the real-time storage with this data
-            update_real_time_item_storage(item, df)
+            update_db_item_storage(item, df)
         else:
             # Log if no valid listings are found
             print(f"[Worker {proxy}] No valid listings to display.")
@@ -1073,6 +881,53 @@ def normalize_gem_name(gem_name, gem_type=None):
     return gem_name.strip()
 
 
+
+def send_profitable_item_alert(comparison_result, action):
+    """
+    Constructs a structured message for profitable items and triggers an asynchronous alert.
+
+    Parameters:
+        comparison_result (dict): The result of the comparison, including profitability status and item details.
+        action (str): "inserted" or "updated" to indicate the database operation.
+    """
+    try:
+        # Fetch the item's name from the database for inclusion in the alert
+        item_details = fetch_item_from_db(comparison_result["item_id"])
+        if not item_details:
+            logging.error(f"Unable to fetch item details for ID: {comparison_result['item_id']}")
+            return
+
+        # Calculate profit
+        profit = (
+            comparison_result["combined_gem_price"] * (1 - steam_fee) - comparison_result["item_price"]
+            if "combined_gem_price" in comparison_result
+            else comparison_result["highest_buy_order_price"] * (1 - steam_fee) - comparison_result["item_price"]
+        )
+
+        # Construct the structured message
+        message = (
+            f"Profitable item found ({action.upper()})! "
+            f"Name: {item_details['name']}; "
+            f"Price: {comparison_result['item_price']}; "
+            f"Combined gem price: {comparison_result.get('combined_gem_price', 'N/A')}; "
+            f"Profit: {profit:.2f}; "
+            f"ID: {comparison_result['item_id']}"
+        )
+        
+        logging.info(f"Sending alert: {message}")
+
+        # Trigger the asynchronous event
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(event_trigger(message))  # Schedule the coroutine
+        else:
+            loop.run_until_complete(event_trigger(message))  # Run the coroutine to completion
+
+    except Exception as e:
+        logging.error(f"Error in send_profitable_item_alert: {e}")
+
+
+
 def synchronize_and_compare(item_id):
     """
     Synchronizes item data with corresponding gem data, performs comparisons, 
@@ -1134,13 +989,14 @@ def synchronize_and_compare(item_id):
     # Log the comparison result
     logging.debug(f"Comparison result: {comparison_result}")
 
-    # If the item is profitable, write it to the database and alert if necessary
+    # If the item is profitable, write it to the database and send an alert
     if comparison_result["is_profitable"]:
-        write_comparison_to_db(comparison_result)  # Store the comparison result in the database
-        alert_if_needed(comparison_result)         # Trigger an alert if needed
+        action = write_comparison_to_db(comparison_result)  # Get whether it was inserted or updated
         logging.info(f"Profitable item found and written to database: {comparison_result}")
+        send_profitable_item_alert(comparison_result, action)
     else:
         logging.debug(f"Item not profitable: {comparison_result}")
+
 
 
 
@@ -1239,7 +1095,7 @@ alert_file_handler.setFormatter(formatter)
 # Add the file handler to the alert logger
 alert_logger.addHandler(alert_file_handler)
 
-def alert_if_needed(comparison_result):
+def alert_logs_and_cmd(comparison_result):
     """
     Trigger an alert if the comparison result shows a profitable opportunity and log it to a separate file.
     """
@@ -1273,6 +1129,9 @@ def write_comparison_to_db(comparison_result):
 
     Parameters:
         comparison_result (dict): The comparison data.
+
+    Returns:
+        str: "inserted" if a new entry was added, "updated" if an existing entry was modified.
     """
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
@@ -1282,6 +1141,7 @@ def write_comparison_to_db(comparison_result):
     item_price = comparison_result.get("item_price", 0)
     expected_profit = combined_gem_price * (1 - steam_fee) - item_price
     expected_profit = round(expected_profit, 2)
+
     # Check if an entry with the same item_id already exists
     cursor.execute("SELECT COUNT(*) FROM comparisons WHERE item_id = ?", (comparison_result.get("item_id"),))
     exists = cursor.fetchone()[0] > 0
@@ -1329,8 +1189,10 @@ def write_comparison_to_db(comparison_result):
     conn.commit()
     conn.close()
 
-    # Optional: Log the action performed
-    print(f"Comparison for item_id {comparison_result.get('item_id')} was {action}. Expected profit: {expected_profit:.2f}")
+    # Log the action performed
+    logging.info(f"Comparison for item_id {comparison_result.get('item_id')} was {action}. Expected profit: {expected_profit:.2f}")
+    return action  # Return whether it was inserted or updated
+
 
 
 # Main Monitor Function
@@ -1474,12 +1336,14 @@ async def main_all():
     """
     main_finished = asyncio.Event()  # Flag for `main` completion
     gem_fetcher_finished = asyncio.Event()  # Flag for `gem fetcher` completion
+    #bot_task = asyncio.create_task(background_bot_polling())
 
     logging.debug("Starting all tasks.")
     await asyncio.gather(
         main(main_finished),
         main_gem_histogram_fetcher(gem_fetcher_finished),
-        monitor(main_finished, gem_fetcher_finished)
+        monitor(main_finished, gem_fetcher_finished),
+        background_bot_polling()  # Telegram bot polling runs concurrently
     )
     logging.debug("All tasks stopped.")
 
@@ -1489,7 +1353,6 @@ if __name__ == "__main__":
     try:
         # Initialize the database
         init_db()
-
         """
         all_items = fetch_all_items_from_db()
         for item in all_items:
