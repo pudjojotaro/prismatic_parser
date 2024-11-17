@@ -17,7 +17,18 @@ from collections import defaultdict
 import logging
 import sqlite3
 from datetime import datetime, timedelta
-from telegram_bot import event_trigger, background_bot_polling
+import sys
+import os
+
+
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+projects_dir = os.path.abspath(os.path.join(current_dir, ".."))
+sys.path.append(projects_dir)
+
+from telegram_alert_bot import event_trigger, background_bot_polling  # type: ignore
+
+
 
 # Global rate limit configuration
 REQUEST_DELAY = 10  # Delay between individual requests for each worker
@@ -1379,12 +1390,12 @@ async def main_gem_histogram_fetcher(gem_fetcher_finished):
 
 
 async def main_all():
+    #await event_trigger("test")
     """
     Coordinates `main`, `main_gem_histogram_fetcher`, and `monitor`.
     """
     main_finished = asyncio.Event()  # Flag for `main` completion
     gem_fetcher_finished = asyncio.Event()  # Flag for `gem fetcher` completion
-    #bot_task = asyncio.create_task(background_bot_polling())
 
     logging.debug("Starting all tasks.")
     await asyncio.gather(
