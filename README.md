@@ -73,6 +73,8 @@ root/
 4. **Data Processing**:
    - Processes market data using Python libraries like `pandas` and `sqlite3`.
 
+
+![Diagram](./images/flow_chart.svg)  
 ---
 
 ## Database Schema
@@ -121,24 +123,24 @@ To determine profitability, the system compares the price of an item with the co
    - For both prismatic and ethereal gems, the highest buy order is retrieved from their respective buy orders list.
 
    - Let:
-     - \( P_{	ext{prismatic}} \) = highest prismatic gem buy order.
-     - \( P_{	ext{ethereal}} \) = highest ethereal gem buy order.
+     - \( P_{\text{prismatic}} \) = highest prismatic gem buy order.
+     - \( P_{\text{ethereal}} \) = highest ethereal gem buy order.
 
 2. **Calculate Combined Gem Price**:
    - The combined gem price is calculated as:
      \[
-     P_{	ext{combined}} = P_{	ext{prismatic}} + P_{	ext{ethereal}}
+     P_{\text{combined}} = P_{\text{prismatic}} + P_{\text{ethereal}}
      \]
 
 3. **Profitability Check**:
    - An item is considered profitable if:
      \[
-     P_{	ext{item}} < P_{	ext{combined}} 	imes (1 - 	ext{SteamFee} - 	ext{TargetProfit})
+     P_{\text{item}} < P_{\text{combined}} \times (1 - \text{SteamFee} - \text{TargetProfit})
      \]
      where:
-     - \( P_{	ext{item}} \) is the item price.
-     - \( 	ext{SteamFee} \) is the Steam transaction fee percentage.
-     - \( 	ext{TargetProfit} \) is the desired profit margin.
+     - \( P_{\text{item}} \) is the item price.
+     - \( \text{SteamFee} \) is the Steam transaction fee percentage.
+     - \( \text{TargetProfit} \) is the desired profit margin.
 
 4. **Result**:
    - The system outputs a dictionary containing:
@@ -149,6 +151,7 @@ To determine profitability, the system compares the price of an item with the co
      - `is_profitable`: A boolean indicating profitability.
      - `timestamp`: The time of calculation.
    - If the item is profitable, the system **sends an alert** containing the item details, combined gem prices, and calculated profit values for immediate action.
+
 
 ---
 
