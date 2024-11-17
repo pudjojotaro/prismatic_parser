@@ -1,17 +1,17 @@
 import asyncio
 import json
 from pathlib import Path
-from aiosteampy import App, AppContext
-import pandas as pd
-from bs4 import BeautifulSoup
-from aiosteampy import SteamClient, Currency, AppContext
-from aiosteampy.helpers import restore_from_cookies
-from aiosteampy.utils import get_jsonable_cookies
-from aiosteampy import ResourceNotModified
+from aiosteampy import App, AppContext # type: ignore
+import pandas as pd # type: ignore
+from bs4 import BeautifulSoup # type: ignore
+from aiosteampy import SteamClient, Currency, AppContext # type: ignore
+from aiosteampy.helpers import restore_from_cookies # type: ignore
+from aiosteampy.utils import get_jsonable_cookies # type: ignore 
+from aiosteampy import ResourceNotModified # type: ignore
 import random
-from aiosteampy import SteamClient
+from aiosteampy import SteamClient # type: ignore
 import itertools
-from aiosteampy import SteamPublicClient
+from aiosteampy import SteamPublicClient # type: ignore
 import time
 from collections import defaultdict
 import logging
