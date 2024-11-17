@@ -387,7 +387,7 @@ def parse_market_listings(market_listings):
         item_description = listing.item.description.market_name
         listing_data = {
             "ID": listing.id,
-            "Price": listing.converted_price / 100,  # Convert price to float (divide by 100)
+            "Price": listing.converted_price / 100 + listing.converted_fee/100,  # Convert price to float (divide by 100)
             "Item Description": item_description,
             "Type": listing.item.description.type,
             "Ethereal Gem": None,
@@ -918,11 +918,11 @@ def send_profitable_item_alert(comparison_result, action):
         # Construct the structured message
         message = (
             f"Profitable item found ({action.upper()})! "
-            f"Name: {item_details['name']}; "
-            f"Price: {comparison_result['item_price']}; "
-            f"Combined gem price: {comparison_result.get('combined_gem_price', 'N/A')}; "
-            f"Profit: {profit:.2f}; "
-            f"ID: {comparison_result['item_id']}"
+            f"\nName: {item_details['name']}; "
+            f"\nPrice: {comparison_result['item_price']}; "
+            f"\nCombined gem price: {comparison_result.get('combined_gem_price', 'N/A')}; "
+            f"\nProfit: {profit:.2f}; "
+            f"\nID: {comparison_result['item_id']}"
         )
         
         logging.info(f"Sending alert: {message}")
@@ -930,9 +930,9 @@ def send_profitable_item_alert(comparison_result, action):
         # Trigger the asynchronous event
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            asyncio.ensure_future(event_trigger(message))  # Schedule the coroutine
+            asyncio.ensure_future(event_trigger(message, "Prismatic Parser Bot"))  # Schedule the coroutine
         else:
-            loop.run_until_complete(event_trigger(message))  # Run the coroutine to completion
+            loop.run_until_complete(event_trigger(message, "Prismatic Parser Bot"))  # Run the coroutine to completion
 
     except Exception as e:
         logging.error(f"Error in send_profitable_item_alert: {e}")
@@ -1391,7 +1391,6 @@ async def main_gem_histogram_fetcher(gem_fetcher_finished):
 
 
 async def main_all():
-    #await event_trigger("test")
     """
     Coordinates `main`, `main_gem_histogram_fetcher`, and `monitor`.
     """
