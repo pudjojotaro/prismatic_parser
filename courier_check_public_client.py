@@ -28,6 +28,7 @@ sys.path.append(projects_dir)
 
 from telegram_alert_bot import event_trigger, background_bot_polling  # type: ignore
 
+profitable_item_found = False
 
 
 # Global rate limit configuration
@@ -287,6 +288,38 @@ def get_last_fetch_timestamps():
     finally:
         conn.close()
 
+def send_no_profitable_items_alert():
+    """
+    Sends an alert that no profitable items were found between the last fetch start and end timestamps.
+    """
+    try:
+        # Retrieve the last fetch start and end timestamps
+        fetch_start, fetch_end = get_last_fetch_timestamps()
+
+        if not fetch_start or not fetch_end:
+            logging.error("No fetch timestamps available. Unable to send alert.")
+            return
+
+        # Convert timestamps to human-readable time
+        fetch_start_time = datetime.fromtimestamp(fetch_start).strftime('%Y-%m-%d %H:%M:%S')
+        fetch_end_time = datetime.fromtimestamp(fetch_end).strftime('%Y-%m-%d %H:%M:%S')
+
+        # Construct the alert message
+        message = (
+            f"No profitable items found between {fetch_start_time} and {fetch_end_time}."
+        )
+
+        logging.info(f"Sending alert: {message}")
+
+        # Trigger the asynchronous event
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(event_trigger(message, "Prismatic_Parser_Bot"))  # Schedule the coroutine
+        else:
+            loop.run_until_complete(event_trigger(message, "Prismatic_Parser_Bot"))  # Run the coroutine to completion
+
+    except Exception as e:
+        logging.error(f"Error in send_no_profitable_items_alert: {e}")
 
 
 def clear_all_tables():
@@ -1002,6 +1035,7 @@ def send_profitable_item_alert(comparison_result, action):
         comparison_result (dict): The result of the comparison, including profitability status and item details.
         action (str): "inserted" or "updated" to indicate the database operation.
     """
+    profitable_item_found = True
     try:
         # Fetch the item's name from the database for inclusion in the alert
         item_details = fetch_item_from_db(comparison_result["item_id"])
@@ -1031,9 +1065,9 @@ def send_profitable_item_alert(comparison_result, action):
         # Trigger the asynchronous event
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            asyncio.ensure_future(event_trigger(message, "Prismatic Parser Bot"))  # Schedule the coroutine
+            asyncio.ensure_future(event_trigger(message, "Prismatic _Parser_Bot"))  # Schedule the coroutine
         else:
-            loop.run_until_complete(event_trigger(message, "Prismatic Parser Bot"))  # Run the coroutine to completion
+            loop.run_until_complete(event_trigger(message, "Prismatic_Parser_Bot"))  # Run the coroutine to completion
 
     except Exception as e:
         logging.error(f"Error in send_profitable_item_alert: {e}")
@@ -1396,7 +1430,8 @@ async def monitor(main_finished, gem_fetcher_finished):
                 await asyncio.sleep(0.1)  # Prevent tight looping
 
             logging.debug("Monitor: Monitoring completed. Waiting for next fetcher cycle.")
-
+            if not profitable_item_found:
+                send_no_profitable_items_alert()
             # Wait for either `main_finished` or `gem_fetcher_finished` to clear
             # This ensures monitoring doesn't run again until a new fetch cycle begins
             await asyncio.wait([
@@ -1407,6 +1442,7 @@ async def monitor(main_finished, gem_fetcher_finished):
                 await asyncio.sleep(1)
 
             logging.debug("Monitor: Waiting for new fetcher cycles to complete before monitoring again.")
+            
 
     except Exception as e:
         logging.error("Error in monitoring: %s", e)
@@ -1422,6 +1458,7 @@ async def main(main_finished):
     try:
         while True:
             logging.debug("Main: Starting new fetch cycle.")
+            profitable_item_found = False
             main_cycle_start_timestamp = time.time()
             # Load proxies for handling requests
             proxies = load_proxies(proxy_type="items")
