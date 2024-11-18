@@ -33,7 +33,7 @@ from telegram_alert_bot import event_trigger, background_bot_polling  # type: ig
 # Global rate limit configuration
 REQUEST_DELAY = 10  # Delay between individual requests for each worker
 BATCH_DELAY = 60    # Delay after every 100 listings
-LISTINGS_PER_REQUEST = 10  # Number of listings per request
+LISTINGS_PER_REQUEST = 12  # Number of listings per request
 LISTINGS_BEFORE_BATCH_DELAY = 100  # Trigger batch delay after this count
 
 # List of items to fetch data for
@@ -146,6 +146,7 @@ def init_db():
         - items: Stores data about items/couriers including price, gems, and timestamps.
         - gems: Stores data about gems, including buy orders and timestamps.
         - comparisons: Stores comparison data for items, including profitability and expected profit.
+        - fetch_timestamps: Stores the timestamps of fetch start and end.
 
     Columns:
         - items:
@@ -169,6 +170,10 @@ def init_db():
             - ethereal_gem_price: Price of the associated ethereal gem.
             - combined_gem_price: Combined price of both gems.
             - expected_profit: Calculated expected profit for the item.
+        - fetch_timestamps:
+            - id: Unique identifier for each fetch record (Primary Key).
+            - fetch_start_timestamp: The timestamp when the fetch started.
+            - fetch_end_timestamp: The timestamp when the fetch ended.
 
     Commits the changes to the database and closes the connection.
     """
@@ -211,8 +216,104 @@ def init_db():
     )
     """)
 
+    # Create fetch_timestamps table for storing fetch start and end times
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS fetch_timestamps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- Auto-incrementing ID for each fetch record
+        fetch_start_timestamp REAL,           -- The timestamp when the fetch started
+        fetch_end_timestamp REAL              -- The timestamp when the fetch ended
+    )
+    """)
+
     conn.commit()
     conn.close()
+
+def save_fetch_timestamps(fetch_start, fetch_end):
+    """
+    Saves the fetch start and end timestamps into the fetch_timestamps table.
+
+    Parameters:
+        fetch_start (float): The timestamp when the fetch started (Unix timestamp).
+        fetch_end (float): The timestamp when the fetch ended (Unix timestamp).
+    """
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # Insert the timestamps into the fetch_timestamps table
+        cursor.execute("""
+        INSERT INTO fetch_timestamps (fetch_start_timestamp, fetch_end_timestamp)
+        VALUES (?, ?)
+        """, (fetch_start, fetch_end))
+
+        conn.commit()
+        logging.info(f"Fetch timestamps saved: start={fetch_start}, end={fetch_end}")
+    except sqlite3.Error as e:
+        logging.error(f"Error saving fetch timestamps: {e}")
+    finally:
+        conn.close()
+
+def get_last_fetch_timestamps():
+    """
+    Retrieves the most recent fetch start and end timestamps from the fetch_timestamps table.
+
+    Returns:
+        tuple: A tuple containing the last fetch start timestamp and fetch end timestamp as floats.
+               Returns (None, None) if no timestamps are found.
+    """
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # Query to retrieve the latest fetch timestamps
+        cursor.execute("""
+        SELECT fetch_start_timestamp, fetch_end_timestamp
+        FROM fetch_timestamps
+        ORDER BY id DESC
+        LIMIT 1
+        """)
+        result = cursor.fetchone()
+
+        if result:
+            fetch_start, fetch_end = result
+            logging.info(f"Last fetch timestamps retrieved: start={fetch_start}, end={fetch_end}")
+            return fetch_start, fetch_end
+        else:
+            logging.info("No fetch timestamps found in the database.")
+            return None, None
+    except sqlite3.Error as e:
+        logging.error(f"Error retrieving last fetch timestamps: {e}")
+        return None, None
+    finally:
+        conn.close()
+
+
+
+def clear_all_tables():
+    """
+    Clear all rows from the `items`, `gems`, and `comparisons` tables in the database.
+    """
+    try:
+        # Connect to the database
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+
+        # List of tables to clear
+        tables = ["items", "gems", "comparisons"]
+
+        # Iterate through tables and delete all rows
+        for table in tables:
+            cursor.execute(f"DELETE FROM {table}")
+            print(f"Cleared all entries from the `{table}` table.")
+
+        # Commit changes and close the connection
+        conn.commit()
+        conn.close()
+        print("All tables have been successfully cleared.")
+
+    except sqlite3.OperationalError as e:
+        print(f"Error clearing tables: {e}")
+
 
 
 # Function to load proxies from file
@@ -353,8 +454,8 @@ async def fetch_gem_data_worker(gem_task_queue, proxy):
             items_processed += 1
 
             # Enforce a delay after processing two items to avoid rate-limiting
-            if items_processed >= 2:
-                print(f"[Worker {proxy}] Pausing for {REQUEST_DELAY} seconds after processing 2 items.")
+            if items_processed >= 3:
+                print(f"[Worker {proxy}] Pausing for {REQUEST_DELAY} seconds after processing 3 items.")
                 await asyncio.sleep(REQUEST_DELAY)
                 items_processed = 0  # Reset the counter
     finally:
@@ -947,6 +1048,13 @@ def synchronize_and_compare(item_id):
     Parameters:
         item_id (str): The ID of the item to synchronize and compare.
     """
+    # Fetch the last fetch timestamps
+    fetch_start, fetch_end = get_last_fetch_timestamps()
+
+    if not fetch_start or not fetch_end:
+        logging.error("Fetch timestamps are missing. Cannot proceed with synchronization.")
+        return
+
     # Fetch the item data from the database
     item_data = fetch_item_from_db(item_id)
     logging.debug(f"Fetched item data: {item_data}")
@@ -954,6 +1062,12 @@ def synchronize_and_compare(item_id):
     if not item_data:
         logging.debug(f"No data found for item_id: {item_id}")
         return  # Exit if no data is found for the item
+
+    # Check if the item's timestamp is within the last fetch cycle
+    item_timestamp = item_data.get("timestamp")
+    if not item_timestamp or not (fetch_start <= item_timestamp <= fetch_end):
+        logging.debug(f"Item {item_id} is outside the last fetch cycle. Skipping.")
+        return  # Exit if the item's timestamp is not within the last fetch cycle
 
     # Extract and validate item description
     item_description = item_data.get("name")
@@ -1012,6 +1126,7 @@ def synchronize_and_compare(item_id):
             logging.info(f"Non-profitable comparison for item_id {comparison_result['item_id']} was removed.")
         elif action == "not_found":
             logging.debug(f"No comparison found to remove for item_id {comparison_result['item_id']}.")
+
 
 
 
@@ -1307,7 +1422,7 @@ async def main(main_finished):
     try:
         while True:
             logging.debug("Main: Starting new fetch cycle.")
-
+            main_cycle_start_timestamp = time.time()
             # Load proxies for handling requests
             proxies = load_proxies(proxy_type="items")
             # Create task queues
@@ -1342,9 +1457,12 @@ async def main(main_finished):
                 # Signal the completion of the fetch cycle
                 main_finished.set()
 
+                main_cycle_end_timestamp = time.time()
+                save_fetch_timestamps(main_cycle_start_timestamp, main_cycle_end_timestamp)
                 # Wait for 60 minutes (cooldown period) before starting a new fetch cycle
                 await asyncio.sleep(3600)
                 # Clear the event flag for the next cycle
+                
                 main_finished.clear()
 
     except Exception as e:
