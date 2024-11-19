@@ -34,7 +34,7 @@ profitable_item_found = False
 # Global rate limit configuration
 REQUEST_DELAY = 10  # Delay between individual requests for each worker
 BATCH_DELAY = 60    # Delay after every 100 listings
-LISTINGS_PER_REQUEST = 12  # Number of listings per request
+LISTINGS_PER_REQUEST = 15  # Number of listings per request
 LISTINGS_BEFORE_BATCH_DELAY = 100  # Trigger batch delay after this count
 
 # List of items to fetch data for
@@ -288,13 +288,13 @@ def get_last_fetch_timestamps():
     finally:
         conn.close()
 
-def send_no_profitable_items_alert():
+def send_no_profitable_items_alert(fetch_start=None, fetch_end=None):
     """
     Sends an alert that no profitable items were found between the last fetch start and end timestamps.
     """
     try:
         # Retrieve the last fetch start and end timestamps
-        fetch_start, fetch_end = get_last_fetch_timestamps()
+        
 
         if not fetch_start or not fetch_end:
             logging.error("No fetch timestamps available. Unable to send alert.")
@@ -1035,7 +1035,8 @@ def send_profitable_item_alert(comparison_result, action):
         comparison_result (dict): The result of the comparison, including profitability status and item details.
         action (str): "inserted" or "updated" to indicate the database operation.
     """
-    profitable_item_found = True
+    global profitable_item_found
+    
     try:
         # Fetch the item's name from the database for inclusion in the alert
         item_details = fetch_item_from_db(comparison_result["item_id"])
@@ -1062,6 +1063,7 @@ def send_profitable_item_alert(comparison_result, action):
         
         logging.info(f"Sending alert: {message}")
 
+        profitable_item_found = True
         # Trigger the asynchronous event
         loop = asyncio.get_event_loop()
         if loop.is_running():
@@ -1074,7 +1076,7 @@ def send_profitable_item_alert(comparison_result, action):
 
 
 
-def synchronize_and_compare(item_id):
+def synchronize_and_compare(item_id, fetch_start, fetch_end):
     """
     Synchronizes item data with corresponding gem data, performs comparisons, 
     and handles the results (e.g., stores in the database or triggers alerts).
@@ -1083,7 +1085,7 @@ def synchronize_and_compare(item_id):
         item_id (str): The ID of the item to synchronize and compare.
     """
     # Fetch the last fetch timestamps
-    fetch_start, fetch_end = get_last_fetch_timestamps()
+    
 
     if not fetch_start or not fetch_end:
         logging.error("Fetch timestamps are missing. Cannot proceed with synchronization.")
@@ -1405,47 +1407,61 @@ def remove_comparison_if_not_profitable(comparison_result):
 
 
 # Main Monitor Function
-
 async def monitor(main_finished, gem_fetcher_finished):
     """
     Monitors items and gems only when both `main_finished` and `gem_fetcher_finished` are set.
     Runs monitoring only once during the fetchers' cooldown period.
     """
+    global profitable_item_found
+
     try:
         while True:
             # Wait until both fetcher functions have finished
             await asyncio.wait([
                 asyncio.create_task(main_finished.wait()),
                 asyncio.create_task(gem_fetcher_finished.wait())
-            ])
+            ], return_when=asyncio.ALL_COMPLETED)  # Ensure both events are set
+            
             logging.debug("Monitor: Both fetchers finished. Starting monitoring.")
+
+            # Retrieve the latest fetch timestamps
+            fetch_start, fetch_end = get_last_fetch_timestamps()
+            logging.debug(f"Monitor: Retrieved timestamps - fetch_start={fetch_start}, fetch_end={fetch_end}")
 
             # Fetch all items from the database
             all_items = fetch_all_items_from_db()
             logging.debug(f"Monitor: Fetched {len(all_items)} items from the database.")
 
+            # Reset profitable item flag
+            profitable_item_found = False
+
+            # Process all items and check profitability
             for item in all_items:
                 logging.debug(f"Monitoring item: {item}")
-                synchronize_and_compare(item['id'])
+                synchronize_and_compare(item['id'], fetch_start, fetch_end)
                 await asyncio.sleep(0.1)  # Prevent tight looping
 
             logging.debug("Monitor: Monitoring completed. Waiting for next fetcher cycle.")
+
+            # Send alert if no profitable items were found
             if not profitable_item_found:
-                send_no_profitable_items_alert()
-            # Wait for either `main_finished` or `gem_fetcher_finished` to clear
-            # This ensures monitoring doesn't run again until a new fetch cycle begins
+                send_no_profitable_items_alert(fetch_start, fetch_end)
+
+            # Wait for the next fetch cycle
             await asyncio.wait([
                 asyncio.create_task(main_finished.wait()),
                 asyncio.create_task(gem_fetcher_finished.wait())
-            ])
+            ], return_when=asyncio.ALL_COMPLETED)  # Wait for both fetchers to clear their flags
+
+            # Wait until both are cleared
             while main_finished.is_set() and gem_fetcher_finished.is_set():
                 await asyncio.sleep(1)
 
             logging.debug("Monitor: Waiting for new fetcher cycles to complete before monitoring again.")
-            
 
     except Exception as e:
         logging.error("Error in monitoring: %s", e)
+
 
 
 async def main(main_finished):
@@ -1455,6 +1471,8 @@ async def main(main_finished):
     Parameters:
         main_finished (asyncio.Event): Event to signal the completion of the fetch cycle.
     """
+    global profitable_item_found
+
     try:
         while True:
             logging.debug("Main: Starting new fetch cycle.")
