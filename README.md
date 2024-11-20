@@ -170,13 +170,18 @@ Key constants can be configured in the project settings:
 
 ## Technology Stack
 
-| Technology | Description                                         | Links                     |
-|------------|-----------------------------------------------------|---------------------------|
-| Python     | Core programming language used for the project.     | [Python.org](https://www.python.org/) |
-| SQLite     | Lightweight, file-based database for storage.       | [SQLite.org](https://sqlite.org/index.html) |
-| Pandas     | Data manipulation and analysis library.             | [Pandas Docs](https://pandas.pydata.org/) |
-| BeautifulSoup | HTML and XML parsing library.                     | [BeautifulSoup Docs](https://www.crummy.com/software/BeautifulSoup/) |
-| AioSteamPy | Asynchronous Steam API client library.              | [AioSteamPy](https://pypi.org/project/aiosteampy/) |
+| Technology | Description | Version | Links |
+|------------|-------------|---------|-------|
+| Python | Core programming language | 3.8+ | [Python.org](https://www.python.org/) |
+| SQLite | Lightweight database | 3.x | [SQLite.org](https://sqlite.org/index.html) |
+| Pandas | Data manipulation library | 2.0+ | [Pandas Docs](https://pandas.pydata.org/) |
+| BeautifulSoup4 | HTML parsing library | 4.x | [BS4 Docs](https://www.crummy.com/software/BeautifulSoup/bs4/doc/) |
+| AioSteamPy | Async Steam API client | Latest | [AioSteamPy](https://pypi.org/project/aiosteampy/) |
+| python-dotenv | Environment variable management | Latest | [python-dotenv](https://pypi.org/project/python-dotenv/) |
+| aiohttp | Async HTTP client/server | Latest | [aiohttp](https://docs.aiohttp.org/) |
+| python-telegram-bot | Telegram Bot API wrapper | Latest | [python-telegram-bot](https://python-telegram-bot.org/) |
+| asyncio | Async I/O framework | Built-in | [asyncio Docs](https://docs.python.org/3/library/asyncio.html) |
+| logging | Logging facility | Built-in | [logging Docs](https://docs.python.org/3/library/logging.html) |
 
 ---
 
