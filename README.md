@@ -1,4 +1,3 @@
-
 # Courier Check Public Client
 
 ![Project Banner](./images/github-header-image.png)  
@@ -9,72 +8,72 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20|%20MacOS-lightgrey)
 
 ## Introduction
-The **Courier Check Public Client** is a demonstration project designed to analyze the profitability of items and gems in Steam's marketplace. The project fetches market data using asynchronous proxy workers and employs controlled delays to avoid rate limits. The analysis focuses on comparing item prices with the combined prices of associated gems to identify profitable trading opportunities.
+The **Courier Check Public Client** is a demonstration project that monitors Steam marketplace items with gems, specifically focusing on Dota 2 couriers and items. It uses asynchronous workers to fetch market data and analyzes the profitability of items by comparing their prices with the combined value of their embedded gems.
 
 ---
 
 ## Table of Contents
 - [Introduction](#introduction)
-- [Features](#features)
-- [Project Structure](#project-structure)
-- [Design and Structure](#design-and-structure)
+- [Core Components](#core-components)
+- [Data Flow](#data-flow)
 - [Database Schema](#database-schema)
-- [Profitability Comparison](#profitability-comparison)
+- [Profitability Analysis](#profitability-analysis)
 - [Configuration](#configuration)
 - [Technology Stack](#technology-stack)
 - [License](#license)
 
 ---
 
-## Features
-| Feature                          | Description                                                                 |
-|----------------------------------|-----------------------------------------------------------------------------|
-| **Asynchronous Proxy Workers**   | Fetches listings using multiple proxies for improved efficiency.            |
-| **Rate Limit Avoidance**         | Incorporates controlled delays and waits to comply with API limits.         |
-| **Profitability Analysis**       | Compares item prices against combined gem prices to calculate potential profit. |
-| **Historical Tracking**          | Maintains timestamps for historical trend analysis.                         |
+## Core Components
+
+### 1. Market Data Fetchers
+- **Total Listings Worker**: Fetches the total number of available listings for each item
+- **Gem Data Worker**: Retrieves and processes buy orders for both prismatic and ethereal gems
+- **Rate Limiting**: Implements delays between requests (REQUEST_DELAY = 10s, BATCH_DELAY = 60s)
+
+### 2. Data Processing
+- **Market Listing Parser**: Extracts gem information using BeautifulSoup
+- **Buy Order Processing**: Normalizes and processes gem buy order data
+- **Database Operations**: Handles CRUD operations for items, gems, and comparisons
+
+### 3. Monitoring System
+- **Profitability Monitor**: Continuously checks for profitable opportunities
+- **Alert System**: Sends notifications via Telegram when profitable items are found
+- **Timestamp Tracking**: Maintains fetch cycles for historical analysis
 
 ---
 
-## Project Structure
+## Data Flow
 
-```plaintext
-root/
-├── proxies/
-│   ├── proxies_items.txt         # Proxy list for fetching items
-│   ├── proxies_gems.txt          # Proxy list for fetching gems
-├── python_helpers/
-│   ├── gems_ethereal_with_ID.json # Ethereal gem data with IDs
-│   ├── gems_prismatic_with_ID.json # Prismatic gem data with IDs
-├── database.db                   # SQLite database file
-├── requirements.txt              # Python dependencies
-├── main.py                       # Main script for market analysis
-├── fetch_gems.py                 # Script for fetching gem data
-├── monitor.py                    # Script for monitoring profitability
-├── README.md                     # Project documentation
-```
+1. **Initialization**
+   - Load environment variables (BOT_TOKEN, CHAT_ID)
+   - Initialize Telegram bot
+   - Set up database tables
+   - Configure logging
 
----
+2. **Main Cycle**
+   ```
+   Start Main Cycle
+   ├── Fetch Total Listings
+   │   └── Queue tasks for detailed fetching
+   ├── Process Market Listings
+   │   ├── Extract gem information
+   │   └── Store in database
+   └── Monitor Profitability
+       ├── Compare prices
+       └── Send alerts if profitable
+   ```
 
-## Design and Structure
+3. **Gem Processing**
+   - Fetch gem buy orders
+   - Process histogram data
+   - Update database with latest prices
 
-### Core Components
-1. **Proxy Workers**:
-   - Uses a pool of proxies to fetch data asynchronously.
-   - Randomized wait times between requests ensure compliance with rate limits.
+4. **Monitoring**
+   - Compare item prices with gem values
+   - Calculate potential profit
+   - Trigger alerts for profitable items
 
-2. **Database Schema**:
-   - Stores data about items, gems, and profitability comparisons (detailed below).
-
-3. **Comparison Engine**:
-   - Calculates profitability by comparing item prices with combined gem prices.
-   - Uses buy order data for the most accurate analysis.
-
-4. **Data Processing**:
-   - Processes market data using Python libraries like `pandas` and `sqlite3`.
-
-
-![Diagram](./images/flow_chart.svg)  
 ---
 
 ## Database Schema
@@ -113,7 +112,7 @@ The database contains three main tables:
 
 ---
 
-## Profitability Comparison
+## Profitability Analysis
 
 ### How It Works
 
@@ -151,8 +150,6 @@ To determine profitability, the system compares the price of an item with the co
      - `is_profitable`: A boolean indicating profitability.
      - `timestamp`: The time of calculation.
    - If the item is profitable, the system **sends an alert** containing the item details, combined gem prices, and calculated profit values for immediate action.
-
-
 
 ---
 
