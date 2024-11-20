@@ -1067,7 +1067,7 @@ def send_profitable_item_alert(comparison_result, action):
         # Trigger the asynchronous event
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            asyncio.ensure_future(event_trigger(message, "Prismatic _Parser_Bot"))  # Schedule the coroutine
+            asyncio.ensure_future(event_trigger(message, "Prismatic_Parser_Bot"))  # Schedule the coroutine
         else:
             loop.run_until_complete(event_trigger(message, "Prismatic_Parser_Bot"))  # Run the coroutine to completion
 
@@ -1407,22 +1407,18 @@ def remove_comparison_if_not_profitable(comparison_result):
 
 
 # Main Monitor Function
-async def monitor(main_finished, gem_fetcher_finished):
+async def monitor(main_finished):
     """
-    Monitors items and gems only when both `main_finished` and `gem_fetcher_finished` are set.
+    Monitors items only when `main_finished` is set.
     Runs monitoring only once during the fetchers' cooldown period.
     """
     global profitable_item_found
 
     try:
         while True:
-            # Wait until both fetcher functions have finished
-            await asyncio.wait([
-                asyncio.create_task(main_finished.wait()),
-                asyncio.create_task(gem_fetcher_finished.wait())
-            ], return_when=asyncio.ALL_COMPLETED)  # Ensure both events are set
-            
-            logging.debug("Monitor: Both fetchers finished. Starting monitoring.")
+            # Wait until main fetcher has finished
+            await main_finished.wait()
+            logging.debug("Monitor: Main fetcher finished. Starting monitoring.")
 
             # Retrieve the latest fetch timestamps
             fetch_start, fetch_end = get_last_fetch_timestamps()
@@ -1448,14 +1444,8 @@ async def monitor(main_finished, gem_fetcher_finished):
                 send_no_profitable_items_alert(fetch_start, fetch_end)
 
             # Wait for the next fetch cycle
-            await asyncio.wait([
-                asyncio.create_task(main_finished.wait()),
-                asyncio.create_task(gem_fetcher_finished.wait())
-            ], return_when=asyncio.ALL_COMPLETED)  # Wait for both fetchers to clear their flags
-
-            # Wait until both are cleared
-            while main_finished.is_set() and gem_fetcher_finished.is_set():
-                await asyncio.sleep(1)
+            main_finished.clear()  # Clear the flag to wait for the next main cycle
+            await main_finished.wait()  # Wait for the next main cycle to finish
 
             logging.debug("Monitor: Waiting for new fetcher cycles to complete before monitoring again.")
 
@@ -1463,12 +1453,12 @@ async def monitor(main_finished, gem_fetcher_finished):
         logging.error("Error in monitoring: %s", e)
 
 
-
-async def main(main_finished):
+async def main(main_started, main_finished):
     """
     Main function to periodically fetch listings for items and signal when finished.
 
     Parameters:
+        main_started (asyncio.Event): Event to signal the start of the fetch cycle.
         main_finished (asyncio.Event): Event to signal the completion of the fetch cycle.
     """
     global profitable_item_found
@@ -1476,6 +1466,7 @@ async def main(main_finished):
     try:
         while True:
             logging.debug("Main: Starting new fetch cycle.")
+            main_started.set()  # Signal the start of the fetch cycle
             profitable_item_found = False
             main_cycle_start_timestamp = time.time()
             # Load proxies for handling requests
@@ -1516,8 +1507,8 @@ async def main(main_finished):
                 save_fetch_timestamps(main_cycle_start_timestamp, main_cycle_end_timestamp)
                 # Wait for 60 minutes (cooldown period) before starting a new fetch cycle
                 await asyncio.sleep(3600)
-                # Clear the event flag for the next cycle
-                
+                # Clear the event flags for the next cycle
+                main_started.clear()
                 main_finished.clear()
 
     except Exception as e:
@@ -1528,12 +1519,13 @@ async def main(main_finished):
 
 
 
-async def main_gem_histogram_fetcher(gem_fetcher_finished):
+async def main_gem_histogram_fetcher(main_started):
     """
     Periodically fetches gem data and signals when finished.
     """
     try:
         while True:
+            await main_started.wait()  # Wait for main to start
             logging.debug("Gem Fetcher: Starting new fetch cycle.")
             proxies = load_proxies(proxy_type="gems")
             gems_data = load_gems_data()
@@ -1552,12 +1544,10 @@ async def main_gem_histogram_fetcher(gem_fetcher_finished):
             await asyncio.gather(*gem_tasks)
             logging.debug("Gem Fetcher: Workers completed.")
 
-            # Signal completion
-            gem_fetcher_finished.set()
-            logging.debug("Gem Fetcher: Fetching completed. Waiting 60 minutes.")
+            logging.debug("Gem Fetcher: Fetching completed. Waiting for next main cycle.")
+            main_started.clear()  # Clear the flag to wait for the next main cycle
+            await main_started.wait()  # Wait for the next main cycle to start
 
-            await asyncio.sleep(3600)  # Wait for the cooldown
-            gem_fetcher_finished.clear()  # Reset the flag for the next cycle
     except Exception as e:
         logging.error("Error in gem fetcher: %s", e)
 
@@ -1567,14 +1557,14 @@ async def main_all():
     """
     Coordinates `main`, `main_gem_histogram_fetcher`, and `monitor`.
     """
+    main_started = asyncio.Event()  # Flag for `main` start
     main_finished = asyncio.Event()  # Flag for `main` completion
-    gem_fetcher_finished = asyncio.Event()  # Flag for `gem fetcher` completion
 
     logging.debug("Starting all tasks.")
     await asyncio.gather(
-        main(main_finished),
-        main_gem_histogram_fetcher(gem_fetcher_finished),
-        monitor(main_finished, gem_fetcher_finished),
+        main(main_started, main_finished),
+        main_gem_histogram_fetcher(main_started),
+        monitor(main_finished),
         background_bot_polling()  # Telegram bot polling runs concurrently
     )
     logging.debug("All tasks stopped.")
