@@ -19,14 +19,16 @@ import sqlite3
 from datetime import datetime, timedelta
 import sys
 import os
+from telegram_alert_bot import TelegramAlertBot
+from dotenv import load_dotenv
 
-
+# Global variable for the bot instance
+telegram_bot = None
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 projects_dir = os.path.abspath(os.path.join(current_dir, ".."))
 sys.path.append(projects_dir)
 
-from telegram_alert_bot import event_trigger, background_bot_polling  # type: ignore
 
 profitable_item_found = False
 
@@ -131,7 +133,8 @@ DATABASE_PATH = "data/items_data.db"
 target_profit = 0.01
 steam_fee = 0.132
 
-# Configure logging to write to logs.txt file
+# Configure logging
+os.makedirs("./logs", exist_ok=True)  # Create logs directory if it doesn't exist
 logging.basicConfig(
     filename="./logs/logs.txt",
     level=logging.DEBUG,
@@ -174,7 +177,7 @@ def init_db():
         - fetch_timestamps:
             - id: Unique identifier for each fetch record (Primary Key).
             - fetch_start_timestamp: The timestamp when the fetch started.
-            - fetch_end_timestamp: The timestamp when the fetch ended.
+            - fetch_end_timestamp: The timestamp when the fetch ended
 
     Commits the changes to the database and closes the connection.
     """
@@ -288,14 +291,11 @@ def get_last_fetch_timestamps():
     finally:
         conn.close()
 
-def send_no_profitable_items_alert(fetch_start=None, fetch_end=None):
+async def send_no_profitable_items_alert(fetch_start=None, fetch_end=None):
     """
     Sends an alert that no profitable items were found between the last fetch start and end timestamps.
     """
     try:
-        # Retrieve the last fetch start and end timestamps
-        
-
         if not fetch_start or not fetch_end:
             logging.error("No fetch timestamps available. Unable to send alert.")
             return
@@ -310,14 +310,8 @@ def send_no_profitable_items_alert(fetch_start=None, fetch_end=None):
         )
 
         logging.info(f"Sending alert: {message}")
-
-        # Trigger the asynchronous event
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.ensure_future(event_trigger(message, "Prismatic_Parser_Bot"))  # Schedule the coroutine
-        else:
-            loop.run_until_complete(event_trigger(message, "Prismatic_Parser_Bot"))  # Run the coroutine to completion
-
+        await telegram_bot.event_trigger(message, "Prismatic_Parser_Bot")
+        
     except Exception as e:
         logging.error(f"Error in send_no_profitable_items_alert: {e}")
 
@@ -1027,7 +1021,7 @@ def normalize_gem_name(gem_name, gem_type=None):
 
 
 
-def send_profitable_item_alert(comparison_result, action):
+async def send_profitable_item_alert(comparison_result, action):
     """
     Constructs a structured message for profitable items and triggers an asynchronous alert.
 
@@ -1062,21 +1056,16 @@ def send_profitable_item_alert(comparison_result, action):
         )
         
         logging.info(f"Sending alert: {message}")
-
         profitable_item_found = True
-        # Trigger the asynchronous event
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.ensure_future(event_trigger(message, "Prismatic_Parser_Bot"))  # Schedule the coroutine
-        else:
-            loop.run_until_complete(event_trigger(message, "Prismatic_Parser_Bot"))  # Run the coroutine to completion
+        
+        await telegram_bot.event_trigger(message, "Prismatic_Parser_Bot")
 
     except Exception as e:
         logging.error(f"Error in send_profitable_item_alert: {e}")
 
 
 
-def synchronize_and_compare(item_id, fetch_start, fetch_end):
+async def synchronize_and_compare(item_id, fetch_start, fetch_end):
     """
     Synchronizes item data with corresponding gem data, performs comparisons, 
     and handles the results (e.g., stores in the database or triggers alerts).
@@ -1084,84 +1073,85 @@ def synchronize_and_compare(item_id, fetch_start, fetch_end):
     Parameters:
         item_id (str): The ID of the item to synchronize and compare.
     """
-    # Fetch the last fetch timestamps
-    
+    try:
+        if not fetch_start or not fetch_end:
+            logging.error("Fetch timestamps are missing. Cannot proceed with synchronization.")
+            return
 
-    if not fetch_start or not fetch_end:
-        logging.error("Fetch timestamps are missing. Cannot proceed with synchronization.")
-        return
+        # Fetch the item data from the database
+        item_data = fetch_item_from_db(item_id)
+        logging.debug(f"Fetched item data: {item_data}")
 
-    # Fetch the item data from the database
-    item_data = fetch_item_from_db(item_id)
-    logging.debug(f"Fetched item data: {item_data}")
+        if not item_data:
+            logging.debug(f"No data found for item_id: {item_id}")
+            return  # Exit if no data is found for the item
 
-    if not item_data:
-        logging.debug(f"No data found for item_id: {item_id}")
-        return  # Exit if no data is found for the item
+        # Check if the item's timestamp is within the last fetch cycle
+        item_timestamp = item_data.get("timestamp")
+        if not item_timestamp or not (fetch_start <= item_timestamp <= fetch_end):
+            logging.debug(f"Item {item_id} is outside the last fetch cycle. Skipping.")
+            return  # Exit if the item's timestamp is not within the last fetch cycle
 
-    # Check if the item's timestamp is within the last fetch cycle
-    item_timestamp = item_data.get("timestamp")
-    if not item_timestamp or not (fetch_start <= item_timestamp <= fetch_end):
-        logging.debug(f"Item {item_id} is outside the last fetch cycle. Skipping.")
-        return  # Exit if the item's timestamp is not within the last fetch cycle
+        # Extract and validate item description
+        item_description = item_data.get("name")
+        if not item_description:
+            logging.debug(f"Missing item description for item_id: {item_id}")
+            return  # Exit if the item has no description
 
-    # Extract and validate item description
-    item_description = item_data.get("name")
-    if not item_description:
-        logging.debug(f"Missing item description for item_id: {item_id}")
-        return  # Exit if the item has no description
+        logging.debug(f"Processing item: {item_description}")
 
-    logging.debug(f"Processing item: {item_description}")
+        # If the item is a courier, perform a combined comparison
+        if item_description in COURIERS:
+            # Normalize gem names
+            prismatic_gem_name = normalize_gem_name(item_data.get('prismatic_gem', ''), gem_type="Prismatic")
+            ethereal_gem_name = normalize_gem_name(item_data.get('ethereal_gem', ''), gem_type="Ethereal")
+            logging.debug(f"Normalized gems - Prismatic: {prismatic_gem_name}, Ethereal: {ethereal_gem_name}")
 
-    # If the item is a courier, perform a combined comparison
-    if item_description in COURIERS:
-        # Normalize gem names
-        prismatic_gem_name = normalize_gem_name(item_data.get('prismatic_gem', ''), gem_type="Prismatic")
-        ethereal_gem_name = normalize_gem_name(item_data.get('ethereal_gem', ''), gem_type="Ethereal")
-        logging.debug(f"Normalized gems - Prismatic: {prismatic_gem_name}, Ethereal: {ethereal_gem_name}")
+            # Fetch gem data for both Prismatic and Ethereal gems
+            prismatic_gem_data = fetch_gem_from_db(prismatic_gem_name)
+            ethereal_gem_data = fetch_gem_from_db(ethereal_gem_name)
+            logging.debug(f"Fetched gem data - Prismatic: {prismatic_gem_data}, Ethereal: {ethereal_gem_data}")
 
-        # Fetch gem data for both Prismatic and Ethereal gems
-        prismatic_gem_data = fetch_gem_from_db(prismatic_gem_name)
-        ethereal_gem_data = fetch_gem_from_db(ethereal_gem_name)
-        logging.debug(f"Fetched gem data - Prismatic: {prismatic_gem_data}, Ethereal: {ethereal_gem_data}")
+            if not prismatic_gem_data or not ethereal_gem_data:
+                logging.debug(f"Incomplete gem data for item_id {item_id}")
+                return  # Exit if data for either gem is missing
 
-        if not prismatic_gem_data or not ethereal_gem_data:
-            logging.debug(f"Incomplete gem data for item_id {item_id}")
-            return  # Exit if data for either gem is missing
+            # Perform the comparison with the combined gem price
+            comparison_result = compare_item_with_combined_gem_price(item_data, prismatic_gem_data, ethereal_gem_data)
 
-        # Perform the comparison with the combined gem price
-        comparison_result = compare_item_with_combined_gem_price(item_data, prismatic_gem_data, ethereal_gem_data)
+        # If the item is not a courier, perform a single-gem comparison
+        else:
+            # Normalize Prismatic gem name
+            prismatic_gem_name = normalize_gem_name(item_data.get('prismatic_gem', ''), gem_type="Prismatic")
+            # Fetch Prismatic gem data
+            prismatic_gem_data = fetch_gem_from_db(prismatic_gem_name)
+            logging.debug(f"Fetched Prismatic gem data: {prismatic_gem_data}")
 
-    # If the item is not a courier, perform a single-gem comparison
-    else:
-        # Normalize Prismatic gem name
-        prismatic_gem_name = normalize_gem_name(item_data.get('prismatic_gem', ''), gem_type="Prismatic")
-        # Fetch Prismatic gem data
-        prismatic_gem_data = fetch_gem_from_db(prismatic_gem_name)
-        logging.debug(f"Fetched Prismatic gem data: {prismatic_gem_data}")
+            if not prismatic_gem_data:
+                logging.debug(f"No gem data for Prismatic gem '{prismatic_gem_name}' for item_id '{item_id}'")
+                return  # Exit if no data for the Prismatic gem is found
 
-        if not prismatic_gem_data:
-            logging.debug(f"No gem data for Prismatic gem '{prismatic_gem_name}' for item_id '{item_id}'")
-            return  # Exit if no data for the Prismatic gem is found
+            # Perform the comparison with a single gem
+            comparison_result = compare_item_with_gem(item_data, prismatic_gem_data)
 
-        # Perform the comparison with a single gem
-        comparison_result = compare_item_with_gem(item_data, prismatic_gem_data)
+        # Log the comparison result
+        logging.debug(f"Comparison result: {comparison_result}")
 
-    # Log the comparison result
-    logging.debug(f"Comparison result: {comparison_result}")
+        # If the item is profitable, write it to the database and send an alert
+        if comparison_result["is_profitable"]:
+            action = write_comparison_to_db(comparison_result)  # Get whether it was inserted or updated
+            logging.info(f"Profitable item found and written to database: {comparison_result}")
+            await send_profitable_item_alert(comparison_result, action)
+        else:
+            logging.debug(f"Item not profitable: {comparison_result}")
+            action = remove_comparison_if_not_profitable(comparison_result)
+            if action == "removed":
+                logging.info(f"Non-profitable comparison for item_id {comparison_result['item_id']} was removed.")
+            elif action == "not_found":
+                logging.debug(f"No comparison found to remove for item_id {comparison_result['item_id']}.")
 
-    # If the item is profitable, write it to the database and send an alert
-    if comparison_result["is_profitable"]:
-        action = write_comparison_to_db(comparison_result)  # Get whether it was inserted or updated
-        logging.info(f"Profitable item found and written to database: {comparison_result}")
-        send_profitable_item_alert(comparison_result, action)
-    else:
-        logging.debug(f"Item not profitable: {comparison_result}")
-        action = remove_comparison_if_not_profitable(comparison_result)
-        if action == "removed":
-            logging.info(f"Non-profitable comparison for item_id {comparison_result['item_id']} was removed.")
-        elif action == "not_found":
-            logging.debug(f"No comparison found to remove for item_id {comparison_result['item_id']}.")
+    except Exception as e:
+        logging.error(f"Error in synchronize_and_compare: {e}")
 
 
 
@@ -1434,14 +1424,14 @@ async def monitor(main_finished):
             # Process all items and check profitability
             for item in all_items:
                 logging.debug(f"Monitoring item: {item}")
-                synchronize_and_compare(item['id'], fetch_start, fetch_end)
+                await synchronize_and_compare(item['id'], fetch_start, fetch_end)
                 await asyncio.sleep(0.1)  # Prevent tight looping
 
             logging.debug("Monitor: Monitoring completed. Waiting for next fetcher cycle.")
 
             # Send alert if no profitable items were found
             if not profitable_item_found:
-                send_no_profitable_items_alert(fetch_start, fetch_end)
+                await send_no_profitable_items_alert(fetch_start, fetch_end)
 
             # Wait for the next fetch cycle
             main_finished.clear()  # Clear the flag to wait for the next main cycle
@@ -1565,7 +1555,7 @@ async def main_all():
         main(main_started, main_finished),
         main_gem_histogram_fetcher(main_started),
         monitor(main_finished),
-        background_bot_polling()  # Telegram bot polling runs concurrently
+        telegram_bot.background_bot_polling()  # Start bot polling as a background task
     )
     logging.debug("All tasks stopped.")
 
@@ -1573,6 +1563,20 @@ async def main_all():
 
 if __name__ == "__main__":
     try:
+        # Load environment variables
+        load_dotenv()
+        BOT_TOKEN = os.getenv('BOT_TOKEN')
+        CHAT_ID = os.getenv('CHAT_ID')
+
+        if not BOT_TOKEN or not CHAT_ID:
+            raise ValueError("Bot token or Chat ID not found in environment variables")
+
+        # Initialize the bot globally
+        telegram_bot = TelegramAlertBot(
+            token=BOT_TOKEN,
+            user_id=CHAT_ID
+        )
+
         # Initialize the database
         init_db()
         """
@@ -1583,6 +1587,8 @@ if __name__ == "__main__":
 
         # Print confirmation and run the main async program
         print("Database initialized successfully.")
+
+        # Run the main application
         asyncio.run(main_all())
     except Exception as e:
         print(f"Error during execution: {e}")
