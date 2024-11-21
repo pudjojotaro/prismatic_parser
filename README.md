@@ -1,4 +1,4 @@
-# Steam Prismatic Gems Parser
+# Dota 2 Prismatic Gems Parser
 
 ![Project Banner](./images/github-header-image.png)  
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue) 
@@ -8,7 +8,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20|%20MacOS-lightgrey)
 
 ## Introduction
-**Steam Prismatic Gems Parser** is a demonstration project that monitors Steam marketplace items with gems, specifically focusing on Dota 2 couriers and Arcana Items. It uses asynchronous workers running in parallel to fetch market data and analyzes the profitability of items by comparing their prices with the combined value of their embedded gems.
+**Dota 2 Prismatic Gems Parser** is a demonstration project that monitors Steam marketplace items with gems, specifically focusing on Dota 2 couriers and Arcana Items. It uses asynchronous workers running in parallel to fetch market data and analyzes the potential profitability of items by comparing their prices with the combined value of their embedded gems.
 
 ---
 
