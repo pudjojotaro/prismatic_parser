@@ -1,4 +1,4 @@
-# Courier Check Public Client
+# Steam Prismatic Gems Parser
 
 ![Project Banner](./images/github-header-image.png)  
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue) 
@@ -8,12 +8,13 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20|%20MacOS-lightgrey)
 
 ## Introduction
-The **Courier Check Public Client** is a demonstration project that monitors Steam marketplace items with gems, specifically focusing on Dota 2 couriers and items. It uses asynchronous workers to fetch market data and analyzes the profitability of items by comparing their prices with the combined value of their embedded gems.
+**Steam Prismatic Gems Parser** is a demonstration project that monitors Steam marketplace items with gems, specifically focusing on Dota 2 couriers and Arcana Items. It uses asynchronous workers running in parallel to fetch market data and analyzes the profitability of items by comparing their prices with the combined value of their embedded gems.
 
 ---
 
 ## Table of Contents
 - [Introduction](#introduction)
+- [How It Works](#how-it-works)
 - [Core Components](#core-components)
 - [Data Flow](#data-flow)
 - [Database Schema](#database-schema)
@@ -23,6 +24,16 @@ The **Courier Check Public Client** is a demonstration project that monitors Ste
 - [License](#license)
 
 ---
+## How it works
+
+### 1. Couriers and Arcana Items on Dota 2 Steam Marketplace
+- **Unusual Couriers**: All Unusual quality couriers have 2 embedded gems: Prismatic and Ethereal, and after being purchased, allow to extract the gems while destroying the Item itself. The gems can be re-sold on the Steam Marketplace.
+  <img width="355" alt="image" src="https://github.com/user-attachments/assets/578e0ed4-9602-4616-9f15-e62eb92f17dd">
+- **Arcana Items**: Some Arcana quality items have a Prismatic gem, and after being purchased, allow to extract the gem while destroying the Item itself. The gem can be re-sold on the Steam Marketplace.
+  <img width="350" alt="image" src="https://github.com/user-attachments/assets/bad153a6-9978-417e-918f-01b4304a127b">
+- **Profitability**: Some items are cheaper to buy than the price of re-selling the gems on the Steam Marketplace. Those items are considered profitable. (refer to #profitability-analysis)
+
+
 
 ## Core Components
 
