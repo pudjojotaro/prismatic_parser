@@ -208,7 +208,7 @@ Key constants can be configured in the project settings:
 | AioSteamPy | Async Steam API client | Latest | [AioSteamPy](https://pypi.org/project/aiosteampy/) |
 | python-dotenv | Environment variable management | Latest | [python-dotenv](https://pypi.org/project/python-dotenv/) |
 | aiohttp | Async HTTP client/server | Latest | [aiohttp](https://docs.aiohttp.org/) |
-| telegram-alert-bot | Async Telegram alert system | 0.1.0 | [telegram-alert-bot](https://github.com/pudjojotaro/telegram-alert-bot) |
+| telegram-alert-bot | Async Telegram alert system | 0.2.0 | [telegram-alert-bot](https://github.com/pudjojotaro/telegram-alert-bot) |
 | asyncio | Async I/O framework | Built-in | [asyncio Docs](https://docs.python.org/3/library/asyncio.html) |
 | logging | Logging facility | Built-in | [logging Docs](https://docs.python.org/3/library/logging.html) |
 
