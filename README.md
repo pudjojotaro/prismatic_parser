@@ -26,7 +26,7 @@
 ---
 ## How it works
 
-### 1. Couriers and Arcana Items on Dota 2 Steam Marketplace
+### Couriers and Arcana Items on Dota 2 Steam Marketplace
 - **Unusual Couriers**: Almost all Unusual quality couriers have 2 embedded gems: Prismatic and Ethereal, and after being purchased, allow to extract the gems while destroying the Item itself. The gems can be re-sold on the Steam Marketplace.
 
 - **Arcana Items**: Some Arcana quality items have a Prismatic gem, and after being purchased, allow to extract the gem while destroying the Item itself. The gem can be re-sold on the Steam Marketplace.
