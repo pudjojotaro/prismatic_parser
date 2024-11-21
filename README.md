@@ -30,7 +30,7 @@
 - **Unusual Couriers**: All Unusual quality couriers have 2 embedded gems: Prismatic and Ethereal, and after being purchased, allow to extract the gems while destroying the Item itself. The gems can be re-sold on the Steam Marketplace.
   <img width="355" alt="image" src="https://github.com/user-attachments/assets/578e0ed4-9602-4616-9f15-e62eb92f17dd">
 - **Arcana Items**: Some Arcana quality items have a Prismatic gem, and after being purchased, allow to extract the gem while destroying the Item itself. The gem can be re-sold on the Steam Marketplace.
-  <img width="350" alt="image" src="https://github.com/user-attachments/assets/bad153a6-9978-417e-918f-01b4304a127b">
+  <img width="355" alt="image" src="https://github.com/user-attachments/assets/bad153a6-9978-417e-918f-01b4304a127b">
 - **Profitability**: Some items are cheaper to buy than the price of re-selling the gems on the Steam Marketplace. Those items are considered profitable. (refer to #profitability-analysis)
 
 
