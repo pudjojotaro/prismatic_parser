@@ -211,6 +211,7 @@ Key constants can be configured in the project settings:
 | telegram-alert-bot | Async Telegram alert system | 0.2.0 | [telegram-alert-bot](https://github.com/pudjojotaro/telegram-alert-bot) |
 | asyncio | Async I/O framework | Built-in | [asyncio Docs](https://docs.python.org/3/library/asyncio.html) |
 | logging | Logging facility | Built-in | [logging Docs](https://docs.python.org/3/library/logging.html) |
+| proxy-api | Proxy Management | Latest | [FastAPI-Proxy-API](https://github.com/pudjojotaro/fastapi-proxy-api) |
 
 ---
 
