@@ -21,6 +21,9 @@ import sys
 import os
 from telegram_alert_bot import TelegramAlertBot
 from dotenv import load_dotenv
+from proxy_api import ProxyAPI # type: ignore
+import math
+import requests
 
 # Global variable for the bot instance
 telegram_bot = None
@@ -1425,7 +1428,7 @@ async def monitor(main_finished):
             for item in all_items:
                 logging.debug(f"Monitoring item: {item}")
                 await synchronize_and_compare(item['id'], fetch_start, fetch_end)
-                await asyncio.sleep(0.1)  # Prevent tight looping
+                await asyncio.sleep(0.05)  # Prevent tight looping
 
             logging.debug("Monitor: Monitoring completed. Waiting for next fetcher cycle.")
 
@@ -1443,66 +1446,119 @@ async def monitor(main_finished):
         logging.error("Error in monitoring: %s", e)
 
 
-async def main(main_started, main_finished):
-    """
-    Main function to periodically fetch listings for items and signal when finished.
+# Initialize Proxy API at the top level]
 
-    Parameters:
-        main_started (asyncio.Event): Event to signal the start of the fetch cycle.
-        main_finished (asyncio.Event): Event to signal the completion of the fetch cycle.
+
+async def get_and_split_proxies():
     """
+    Fetches all available proxies and splits them between gem and main workers.
+    Returns tuple of (gem_proxies, main_proxies)
+    """
+    try:
+        # Get all available proxies
+        available_proxies = proxy_api.get_all_available_proxies()
+        if not available_proxies:
+            logging.error("No proxies available")
+            return [], []
+
+        # Calculate split
+        total_proxies = len(available_proxies)
+        gem_proxy_count = math.ceil(total_proxies * 0.2)  # 20% for gem fetcher
+        
+        # Split proxies
+        gem_proxies = available_proxies[:gem_proxy_count]
+        main_proxies = available_proxies[gem_proxy_count:]
+
+        # Format proxy strings
+        format_proxy = lambda p: f"{p['protocol']}://{p.get('username', '')}:{p.get('password', '')}@{p['ip']}:{p['port']}"
+        
+        gem_proxy_strings = [format_proxy(p) for p in gem_proxies]
+        main_proxy_strings = [format_proxy(p) for p in main_proxies]
+
+        # Store proxy IDs for later unlocking
+        gem_proxy_ids = [p['id'] for p in gem_proxies]
+        main_proxy_ids = [p['id'] for p in main_proxies]
+
+        logging.info(f"Split proxies - Gem: {len(gem_proxy_strings)}, Main: {len(main_proxy_strings)}")
+        return (gem_proxy_strings, main_proxy_strings), (gem_proxy_ids, main_proxy_ids)
+
+    except Exception as e:
+        logging.error(f"Error fetching proxies: {e}")
+        return ([], []), ([], [])
+
+async def unlock_all_proxies(proxy_ids):
+    """Unlocks all proxies after use"""
+    try:
+        if proxy_ids:
+            proxy_api.unlock_proxies(proxy_ids)
+            logging.info(f"Unlocked {len(proxy_ids)} proxies")
+    except Exception as e:
+        logging.error(f"Error unlocking proxies: {e}")
+
+# Update main function
+async def main(main_started, main_finished):
+    """Main function to periodically fetch listings for items and signal when finished."""
     global profitable_item_found
+    gem_proxy_ids = []  # Initialize at function start
+    main_proxy_ids = []  # Initialize at function start
 
     try:
         while True:
             logging.debug("Main: Starting new fetch cycle.")
-            main_started.set()  # Signal the start of the fetch cycle
+            main_started.set()
             profitable_item_found = False
             main_cycle_start_timestamp = time.time()
-            # Load proxies for handling requests
-            proxies = load_proxies(proxy_type="items")
-            # Create task queues
-            total_task_queue = asyncio.Queue()  # Queue for initial tasks (items and couriers)
-            task_queue = asyncio.Queue()       # Queue for processing listings fetched from total_task_queue
 
-            # Populate the total task queue with items and couriers
-            for item in ITEMS:
-                await total_task_queue.put(item)
-            for item in COURIERS:
-                await total_task_queue.put(item)
-            logging.debug(f"Main: Total tasks in total_task_queue: {total_task_queue.qsize()}")
+            try:
+                # Get and split proxies
+                (gem_proxies, main_proxies), (gem_proxy_ids, main_proxy_ids) = await get_and_split_proxies()
+                
+                if not main_proxies or not gem_proxies:
+                    logging.error("No proxies available. Waiting before retry...")
+                    await asyncio.sleep(300)  # Wait 5 minutes before retrying
+                    continue
 
-            # Start workers to process tasks from the total_task_queue and populate the task_queue
-            total_workers = [total_listings_worker(total_task_queue, task_queue, proxy) for proxy in proxies]
-            await asyncio.gather(*total_workers)  # Wait for all total workers to complete
-            logging.debug("Main: Total listings workers completed.")
+                # Create task queues
+                total_task_queue = asyncio.Queue()
+                task_queue = asyncio.Queue()
 
-            # Add sentinel tasks to task_queue to signal workers to exit
-            # Each worker will exit upon encountering a `None` task
-            for _ in range(len(proxies)):
-                await task_queue.put(None)
+                # Populate queues
+                for item in ITEMS + COURIERS:
+                    await total_task_queue.put(item)
 
-            # Start workers to process tasks from the task_queue
-            main_workers = [worker(task_queue, proxy) for proxy in proxies]
-            await asyncio.gather(*main_workers)  # Wait for all main workers to complete
-            logging.debug("Main: Main workers completed.")
+                # Start workers with main proxies
+                total_workers = [total_listings_worker(total_task_queue, task_queue, proxy) 
+                               for proxy in main_proxies]
+                await asyncio.gather(*total_workers)
+                logging.debug("Main: Total workers completed.")
 
-            # Ensure both task queues are empty before signaling completion
-            if total_task_queue.empty() and task_queue.empty():
-                logging.debug("Main: All tasks completed. Setting main_finished.")
-                # Signal the completion of the fetch cycle
-                main_finished.set()
+                # Add sentinel tasks
+                for _ in range(len(main_proxies)):
+                    await task_queue.put(None)
 
-                main_cycle_end_timestamp = time.time()
-                save_fetch_timestamps(main_cycle_start_timestamp, main_cycle_end_timestamp)
-                # Wait for 60 minutes (cooldown period) before starting a new fetch cycle
-                await asyncio.sleep(3600)
-                # Clear the event flags for the next cycle
-                main_started.clear()
-                main_finished.clear()
+                # Start main workers
+                main_workers = [worker(task_queue, proxy) for proxy in main_proxies]
+                await asyncio.gather(*main_workers)
+
+                if total_task_queue.empty() and task_queue.empty():
+                    main_finished.set()
+                    main_cycle_end_timestamp = time.time()
+                    save_fetch_timestamps(main_cycle_start_timestamp, main_cycle_end_timestamp)
+
+            finally:
+                # Only unlock if we have proxy IDs
+                if main_proxy_ids or gem_proxy_ids:
+                    await unlock_all_proxies(main_proxy_ids + gem_proxy_ids)
+
+            # Wait before next cycle
+            await asyncio.sleep(3600)
+            main_started.clear()
+            main_finished.clear()
 
     except Exception as e:
-        logging.error("Error in main: %s", e)
+        logging.error(f"Error in main: {e}")
+        if main_proxy_ids or gem_proxy_ids:  # Only try to unlock if we have IDs
+            await unlock_all_proxies(main_proxy_ids + gem_proxy_ids)
 
 
 
@@ -1510,36 +1566,46 @@ async def main(main_started, main_finished):
 
 
 async def main_gem_histogram_fetcher(main_started):
-    """
-    Periodically fetches gem data and signals when finished.
-    """
+    """Periodically fetches gem data using dedicated proxies."""
+    gem_proxy_ids = []  # Initialize at function start
+
     try:
         while True:
             await main_started.wait()  # Wait for main to start
             logging.debug("Gem Fetcher: Starting new fetch cycle.")
-            proxies = load_proxies(proxy_type="gems")
-            gems_data = load_gems_data()
-            gem_task_queue = asyncio.Queue()
+            
+            try:
+                # Get gem proxies
+                (gem_proxies, _), (gem_proxy_ids, _) = await get_and_split_proxies()
+                
+                if not gem_proxies:
+                    logging.error("No proxies available for gem fetcher")
+                    await asyncio.sleep(300)
+                    continue
 
-            # Populate the gem task queue
-            for gem_name, gem_info in gems_data.items():
-                item_name_id = gem_info.get("id")
-                if item_name_id:
-                    await gem_task_queue.put((gem_name, item_name_id))
+                gems_data = load_gems_data()
+                gem_task_queue = asyncio.Queue()
 
-            logging.debug(f"Gem Fetcher: Total tasks in queue: {gem_task_queue.qsize()}")
+                for gem_name, gem_info in gems_data.items():
+                    if item_name_id := gem_info.get("id"):
+                        await gem_task_queue.put((gem_name, item_name_id))
 
-            # Start workers to process the gem tasks
-            gem_tasks = [fetch_gem_data_worker(gem_task_queue, proxy) for proxy in proxies]
-            await asyncio.gather(*gem_tasks)
-            logging.debug("Gem Fetcher: Workers completed.")
+                gem_tasks = [fetch_gem_data_worker(gem_task_queue, proxy) 
+                           for proxy in gem_proxies]
+                await asyncio.gather(*gem_tasks)
 
-            logging.debug("Gem Fetcher: Fetching completed. Waiting for next main cycle.")
-            main_started.clear()  # Clear the flag to wait for the next main cycle
-            await main_started.wait()  # Wait for the next main cycle to start
+            finally:
+                # Only unlock if we have proxy IDs
+                if gem_proxy_ids:
+                    await unlock_all_proxies(gem_proxy_ids)
+
+            main_started.clear()
+            await main_started.wait()
 
     except Exception as e:
-        logging.error("Error in gem fetcher: %s", e)
+        logging.error(f"Error in gem fetcher: {e}")
+        if gem_proxy_ids:  # Only try to unlock if we have IDs
+            await unlock_all_proxies(gem_proxy_ids)
 
 
 
@@ -1567,14 +1633,18 @@ if __name__ == "__main__":
         load_dotenv()
         BOT_TOKEN = os.getenv('BOT_TOKEN')
         CHAT_ID = os.getenv('CHAT_ID')
-
+        api_key = os.getenv("API_KEY")
+        proxy_api = ProxyAPI(
+            api_key
+        )
         if not BOT_TOKEN or not CHAT_ID:
             raise ValueError("Bot token or Chat ID not found in environment variables")
 
         # Initialize the bot globally
         telegram_bot = TelegramAlertBot(
             token=BOT_TOKEN,
-            user_id=CHAT_ID
+            user_id=CHAT_ID,
+            merge_pattern="No profitable items found between"
         )
 
         # Initialize the database
