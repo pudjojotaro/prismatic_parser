@@ -1,4 +1,4 @@
-# Courier Check Public Client
+# Dota 2 Prismatic Gems Parser
 
 ![Project Banner](./images/github-header-image.png)  
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue) 
@@ -8,12 +8,13 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20|%20MacOS-lightgrey)
 
 ## Introduction
-The **Courier Check Public Client** is a demonstration project that monitors Steam marketplace items with gems, specifically focusing on Dota 2 couriers and items. It uses asynchronous workers to fetch market data and analyzes the profitability of items by comparing their prices with the combined value of their embedded gems.
+**Dota 2 Prismatic Gems Parser** is a demonstration project that monitors Steam marketplace items with gems, specifically focusing on Dota 2 couriers and Arcana Items. It uses asynchronous workers running in parallel to fetch market data and analyzes the potential profitability of items by comparing their prices with the combined value of their embedded gems.
 
 ---
 
 ## Table of Contents
 - [Introduction](#introduction)
+- [How It Works](#how-it-works)
 - [Core Components](#core-components)
 - [Data Flow](#data-flow)
 - [Database Schema](#database-schema)
@@ -23,13 +24,41 @@ The **Courier Check Public Client** is a demonstration project that monitors Ste
 - [License](#license)
 
 ---
+## How it works
+
+### Couriers and Arcana Items on Dota 2 Steam Marketplace
+- **Unusual Couriers**: Almost all Unusual quality couriers have 2 embedded gems: Prismatic and Ethereal, and after being purchased, allow to extract the gems while destroying the Item itself. The gems can be re-sold on the Steam Marketplace.
+
+- **Arcana Items**: Some Arcana quality items have a Prismatic gem, and after being purchased, allow to extract the gem while destroying the Item itself. The gem can be re-sold on the Steam Marketplace.
+
+<table>
+  <tr>
+    <td align="center">
+      <img width="355" alt="Unusual Courier" src="https://github.com/user-attachments/assets/578e0ed4-9602-4616-9f15-e62eb92f17dd">
+      <br>
+      <strong>Unusual Courier</strong><br>
+      <em>Champion's Green Prismatic Gem</em><br>
+      <em>Champion's Aura 2013 Ethereal Gem</em><br>
+    </td>
+    <td align="center">
+      <img width="355" alt="Arcana" src="https://github.com/user-attachments/assets/bad153a6-9978-417e-918f-01b4304a127b">
+      <br>
+      <strong>Arcana Item</strong><br>
+      <em>Purple Prismatic Gem</em><br>
+    </td>
+  </tr>
+</table>
+  
+- **Profitability**: Some items are cheaper to buy than the price of re-selling the gems on the Steam Marketplace. Those items are considered profitable. (refer to [Profitability Analysis](#profitability-analysis))
+
+
 
 ## Core Components
 
 ### 1. Market Data Fetchers
 - **Total Listings Worker**: Fetches the total number of available listings for each item
+- **Main Worker**: Fetches the listings and parses the information to get the gems. Pauses periodically to avoid hitting rate limits.
 - **Gem Data Worker**: Retrieves and processes buy orders for both prismatic and ethereal gems
-- **Rate Limiting**: Implements delays between requests (REQUEST_DELAY = 10s, BATCH_DELAY = 60s)
 
 ### 2. Data Processing
 - **Market Listing Parser**: Extracts gem information using BeautifulSoup
@@ -37,7 +66,7 @@ The **Courier Check Public Client** is a demonstration project that monitors Ste
 - **Database Operations**: Handles CRUD operations for items, gems, and comparisons
 
 ### 3. Monitoring System
-- **Profitability Monitor**: Continuously checks for profitable opportunities
+- **Profitability Monitor**: After the latest fetching cycles are done, compares the prices in all items with their respective gem prices
 - **Alert System**: Sends notifications via Telegram when profitable items are found
 - **Timestamp Tracking**: Maintains fetch cycles for historical analysis
 
@@ -179,7 +208,7 @@ Key constants can be configured in the project settings:
 | AioSteamPy | Async Steam API client | Latest | [AioSteamPy](https://pypi.org/project/aiosteampy/) |
 | python-dotenv | Environment variable management | Latest | [python-dotenv](https://pypi.org/project/python-dotenv/) |
 | aiohttp | Async HTTP client/server | Latest | [aiohttp](https://docs.aiohttp.org/) |
-| telegram-alert-bot | Async Telegram alert system | 0.1.0 | [telegram-alert-bot](https://github.com/pudjojotaro/telegram-alert-bot) |
+| telegram-alert-bot | Async Telegram alert system | 0.2.0 | [telegram-alert-bot](https://github.com/pudjojotaro/telegram-alert-bot) |
 | asyncio | Async I/O framework | Built-in | [asyncio Docs](https://docs.python.org/3/library/asyncio.html) |
 | logging | Logging facility | Built-in | [logging Docs](https://docs.python.org/3/library/logging.html) |
 
