@@ -35,106 +35,44 @@ sys.path.append(projects_dir)
 
 profitable_item_found = False
 
-
-# Global rate limit configuration
-REQUEST_DELAY = 10  # Delay between individual requests for each worker
-BATCH_DELAY = 60    # Delay after every 100 listings
-LISTINGS_PER_REQUEST = 15  # Number of listings per request
-LISTINGS_BEFORE_BATCH_DELAY = 100  # Trigger batch delay after this count
-
-# List of items to fetch data for
-ITEMS = [
-    "Fractal Horns of Inner Abysm", 
-    "Corrupted Fractal Horns of Inner Abysm"
-    "Exalted Fractal Horns of Inner Abysm", "Inscribed Fractal Horns of Inner Abysm",
-    "Autographed Fractal Horns of Inner Abysm",
-    "Swine of the Sunken Galley", "Inscribed Swine of the Sunken Galley",
-    "Exalted Swine of the Sunken Galley", "Autographed Swine of the Sunken Galley",
-    "Corrupted Swine of the Sunken Galley"
-]
-
-COURIERS = [
-    "Unusual Mango the Newt", "Unusual Blazing Hatchling",
-    "Unusual Ageless Apothecary", "Unusual Hermid", "Unusual Flightless Dod",
-    "Unusual Antipode Couriers", "Unusual Beaver Knight", "Unusual Virtus Werebear",
-    "Unusual Blotto and Stick", "Unusual Grimoire The Book Wyrm", "Unusual Hexgill the Lane Shark",
-    "Unusual Mok", "Unusual Waldi the Faithful", "Unusual Alphid of Lecaciida",
-    "Unusual Deathripper", "Unusual Itsy", "Unusual Coco the Courageous",
-    "Unusual Nimble Ben", "Unusual Yonex's Rage", "Unusual Morok's Mechanical Mediary",
-    "Unusual Speed Demon", "Unusual Tickled Tegu", "Unusual Osky the Ottragon",
-    "Unusual Stumpy - Nature's Attendant", "Unusual Trapjaw the Boxhound",
-    "Unusual Garran Drywiz and Garactacus", "Unusual Skip the Delivery Frog",
-    "Unusual Kupu the Metamorpher", "Unusual Fezzle-Feez the Magic Carpet Smeevil",
-    "Unusual Mighty Boar", "Unusual Prismatic Drake", "Unusual Trusty Mountain Yak",
-    "Unusual Butch", "Unusual Grimsneer", "Unusual Fearless Badger",
-    "Unusual Enduring War Dog", "Unusual The Llama Llama", "Unusual Na'Vi's Weaselcrow",
-    "Unusual Masked Fey, Lord of Tempests", "Unusual Babka the Bewitcher", "Unusual Lil' Nova",
-    "Unusual Tinkbot", "Unusual Tory the Sky Guardian", "Unusual Arnabus the Fairy Rabbit",
-    "Unusual Snowl", "Unusual Cluckles the Brave", "Unusual Azuremir",
-    "Unusual Shagbark", "Unusual Captain Bamboo", "Unusual Porcine Princess Penelope",
-    "Unusual Snelfret the Snail", "Unusual Throe", "Unusual Jin and Yin Fox Spirits",
-    "Unusual Mechjaw the Boxhound", "Unusual Frull", "Unusual Oculopus",
-    "Unusual Drodo the Druffin", "Unusual Lockjaw the Boxhound", "Unusual Murrissey the Smeevil",
-    "Unusual Hollow Jack", "Unusual Baekho", "Unusual Coral the Furryfish",
-    "Unusual Baby Roshan", "Unusual Moil the Fettered", "Unusual Jumo",
-    "Unusual Bionic Birdie"
-]
+def load_constants():
+    """
+    Load all constant data from JSON files in the data directory.
+    Returns tuple of (items, couriers, allowed_gems_prismatic, allowed_gems_ethereal)
+    """
+    data_dir = Path("data")
+    
+    try:
+        # Load items
+        with open(data_dir / "items.json", "r") as f:
+            ITEMS = json.load(f)
+            
+        # Load couriers
+        with open(data_dir / "couriers.json", "r") as f:
+            COURIERS = json.load(f)
+            
+        # Load gems
+        with open(data_dir / "gems_prismatic.json", "r") as f:
+            ALLOWED_GEMS_PRISMATIC = json.load(f)
+            
+        with open(data_dir / "gems_ethereal.json", "r") as f:
+            ALLOWED_GEMS_ETHEREAL = json.load(f)
+            
+        logging.info("Successfully loaded all constant data")
+        return ITEMS, COURIERS, ALLOWED_GEMS_PRISMATIC, ALLOWED_GEMS_ETHEREAL
+        
+    except FileNotFoundError as e:
+        logging.error(f"Missing data file: {e.filename}")
+        raise
+    except json.JSONDecodeError as e:
+        logging.error(f"Invalid JSON in data file: {e}")
+        raise
 
 
-ALLOWED_GEMS = [
-    "Unhallowed Ground", "Dredge Earth", "Brusque Britches Beige", "Tnim S'nnam", 
-    "Reflection's Shade", "Explosive Burst", "Miasmatic Grey", "Ships in the Night", 
-    "Red", "Dungeon Doom", "Plague Grey", "Crystalline Blue", "Orange", "Light Green", 
-    "Earth Green", "Diretide Orange", "Deep Green", "Champion's Green", "Deep Blue", 
-    "Verdant Green", "Vermillion Renewal", "Placid Blue", "Champion's Blue", "Gold", 
-    "Champion's Purple", "Sea Green", "Purple", "Rubiline", "Blue", "Bright Purple", 
-    "Summer Warmth", "Bright Green", "Blossom Red", "Ember Flame", "Cursed Black", 
-    "Plushy Shag", "Creator's Light", "Pyroclastic Flow", "Midas Gold"
-]
-
-
-ALLOWED_GEMS_ETHEREAL = [
-    "Affliction of Vermin",
-    "Bleak Hallucination",
-    "Burning Animus",
-    "Butterfly Romp",
-    "Champion's Aura 2012",
-    "Champion's Aura 2013",
-    "Champion's Aura 2014",
-    "Crystal Rift",
-    "Cursed Essence",
-    "Diretide Blight",
-    "Diretide Corruption",
-    "Divine Essence",
-    "Emerald Ectoplasm",
-    "Ethereal Flame",
-    "Felicity's Blessing",
-    "Frostivus Frost",
-    "Ionic Vapor",
-    "Luminous Gaze",
-    "New Bloom Celebration",
-    "Orbital Decay",
-    "Piercing Beams",
-    "Resonant Energy",
-    "Rubiline Sheen",
-    "Searing Essence",
-    "Self-Made Aura",
-    "Spirit of Earth",
-    "Spirit of Ember",
-    "Sunfire",
-    "Touch of Flame",
-    "Touch of Frost",
-    "Touch of Midas",
-    "Trail of Burning Doom",
-    "Trail of the Amanita",
-    "Trail of the Lotus Blossom",
-    "Triumph of Champions"
-]
 
 DATABASE_PATH = "data/items_data.db"
 
-target_profit = 0.01
-steam_fee = 0.132
+
 
 # Configure logging
 os.makedirs("./logs", exist_ok=True)  # Create logs directory if it doesn't exist
@@ -455,7 +393,7 @@ async def fetch_gem_data_worker(gem_task_queue, proxy):
         while not gem_task_queue.empty():
             # Get the next task from the queue
             gem_name, item_name_id = await gem_task_queue.get()
-            print(f"[Worker {proxy}] Fetching data for gem: {gem_name}")
+            print(f"[Gem Worker {proxy}] Fetching data for gem: {gem_name}")
 
             try:
                 # Fetch histogram and activity
@@ -471,11 +409,11 @@ async def fetch_gem_data_worker(gem_task_queue, proxy):
                 if parsed_data is not None:
                     # Update the gem data in the database
                     update_gem_in_db(gem_name, parsed_data)
-                    print(f"[Worker {proxy}] Buy order data fetched and stored for gem: {gem_name}")
+                    print(f"[Gem Worker {proxy}] Buy order data fetched and stored for gem: {gem_name}")
 
             except Exception as e:
                 # Log any errors encountered during processing
-                print(f"[Worker {proxy}] Error fetching data for gem '{gem_name}': {e}")
+                print(f"[Gem Worker {proxy}] Error fetching data for gem '{gem_name}': {e}")
 
             # Mark the task as done in the queue
             gem_task_queue.task_done()
@@ -485,7 +423,7 @@ async def fetch_gem_data_worker(gem_task_queue, proxy):
 
             # Enforce a delay after processing two items to avoid rate-limiting
             if items_processed >= 3:
-                print(f"[Worker {proxy}] Pausing for {REQUEST_DELAY} seconds after processing 3 items.")
+                print(f"[Gem Worker {proxy}] Pausing for {REQUEST_DELAY} seconds after processing 3 items.")
                 await asyncio.sleep(REQUEST_DELAY)
                 items_processed = 0  # Reset the counter
     finally:
@@ -539,7 +477,7 @@ def parse_market_listings(market_listings):
 
                     # Identify and validate prismatic gems
                     if "Prismatic Gem" in gem_text:
-                        matching_prismatic_gem = next((allowed for allowed in ALLOWED_GEMS if allowed in gem_text), None)
+                        matching_prismatic_gem = next((allowed for allowed in ALLOWED_GEMS_PRISMATIC if allowed in gem_text), None)
                         if matching_prismatic_gem:
                             prismatic_gem = matching_prismatic_gem
 
@@ -571,7 +509,7 @@ def parse_market_listings(market_listings):
                         listing_data["Prismatic Gem"] = None
                     else:
                         # Filter and validate prismatic gems for non-courier items
-                        matching_gem = next((allowed for allowed in ALLOWED_GEMS if allowed in gem_text), None)
+                        matching_gem = next((allowed for allowed in ALLOWED_GEMS_PRISMATIC if allowed in gem_text), None)
                         if matching_gem:
                             listing_data["Prismatic Gem"] = matching_gem
 
@@ -1043,9 +981,9 @@ async def send_profitable_item_alert(comparison_result, action):
 
         # Calculate profit
         profit = (
-            comparison_result["combined_gem_price"] * (1 - steam_fee) - comparison_result["item_price"]
+            comparison_result["combined_gem_price"] * (1 - STEAM_FEE) - comparison_result["item_price"]
             if "combined_gem_price" in comparison_result
-            else comparison_result["highest_buy_order_price"] * (1 - steam_fee) - comparison_result["item_price"]
+            else comparison_result["highest_buy_order_price"] * (1 - STEAM_FEE) - comparison_result["item_price"]
         )
 
         # Construct the structured message
@@ -1178,7 +1116,7 @@ def compare_item_with_gem(item_data, gem_data):
         logging.debug(f"Highest buy order price: {prismatic_highest_buy_order}")
 
         # Determine if the item price is below the buy order price minus fees
-        is_profitable = item_price < prismatic_highest_buy_order * (1 - steam_fee - target_profit)
+        is_profitable = item_price < prismatic_highest_buy_order * (1 - STEAM_FEE - TARGET_PROFIT)
         comparison_result = {
             "item_id": item_data['id'],
             "item_price": item_price,
@@ -1223,7 +1161,7 @@ def compare_item_with_combined_gem_price(item_data, prismatic_gem_data, ethereal
         combined_gem_price = prismatic_highest_buy_order + ethereal_highest_buy_order
 
         # Determine if the item price is below the combined gem price minus fees
-        is_profitable = item_price < combined_gem_price * (1 - steam_fee - target_profit)
+        is_profitable = item_price < combined_gem_price * (1 - STEAM_FEE - TARGET_PROFIT)
         comparison_result = {
             "item_id": item_data['id'],
             "item_price": item_price,
@@ -1300,7 +1238,7 @@ def write_comparison_to_db(comparison_result):
     # Calculate the expected profit
     combined_gem_price = comparison_result.get("combined_gem_price", 0)
     item_price = comparison_result.get("item_price", 0)
-    expected_profit = combined_gem_price * (1 - steam_fee) - item_price
+    expected_profit = combined_gem_price * (1 - STEAM_FEE) - item_price
     expected_profit = round(expected_profit, 2)
 
     # Check if an entry with the same item_id already exists
@@ -1446,47 +1384,7 @@ async def monitor(main_finished):
         logging.error("Error in monitoring: %s", e)
 
 
-# Initialize Proxy API at the top level]
-
-
-async def get_and_split_proxies():
-    """
-    Fetches all available proxies and splits them between gem and main workers.
-    Returns tuple of (gem_proxies, main_proxies)
-    """
-    try:
-        # Get all available proxies
-        available_proxies = proxy_api.get_all_available_proxies()
-        if not available_proxies:
-            logging.error("No proxies available")
-            return [], []
-
-        # Calculate split
-        total_proxies = len(available_proxies)
-        gem_proxy_count = math.ceil(total_proxies * 0.2)  # 20% for gem fetcher
-        
-        # Split proxies
-        gem_proxies = available_proxies[:gem_proxy_count]
-        main_proxies = available_proxies[gem_proxy_count:]
-
-        # Format proxy strings
-        format_proxy = lambda p: f"{p['protocol']}://{p.get('username', '')}:{p.get('password', '')}@{p['ip']}:{p['port']}"
-        
-        gem_proxy_strings = [format_proxy(p) for p in gem_proxies]
-        main_proxy_strings = [format_proxy(p) for p in main_proxies]
-
-        # Store proxy IDs for later unlocking
-        gem_proxy_ids = [p['id'] for p in gem_proxies]
-        main_proxy_ids = [p['id'] for p in main_proxies]
-
-        logging.info(f"Split proxies - Gem: {len(gem_proxy_strings)}, Main: {len(main_proxy_strings)}")
-        return (gem_proxy_strings, main_proxy_strings), (gem_proxy_ids, main_proxy_ids)
-
-    except Exception as e:
-        logging.error(f"Error fetching proxies: {e}")
-        return ([], []), ([], [])
-
-async def unlock_all_proxies(proxy_ids):
+async def unlock_proxies(proxy_ids):
     """Unlocks all proxies after use"""
     try:
         if proxy_ids:
@@ -1495,119 +1393,211 @@ async def unlock_all_proxies(proxy_ids):
     except Exception as e:
         logging.error(f"Error unlocking proxies: {e}")
 
-# Update main function
-async def main(main_started, main_finished):
+
+async def get_formatted_proxies():
+    """
+    Fetches and formats available proxies, retrying until successful.
+    
+    Returns:
+        tuple: (list of formatted proxy strings, list of proxy IDs)
+    """
+    while True:
+        try:
+            available_proxies = proxy_api.get_all_available_proxies()
+            if not available_proxies:
+                logging.error("No proxies available. Waiting before retry...")
+                await asyncio.sleep(300)  # Wait 5 minutes before retrying
+                continue
+
+            # Format proxy strings
+            format_proxy = lambda p: f"{p['protocol']}://{p.get('username', '')}:{p.get('password', '')}@{p['ip']}:{p['port']}"
+            proxy_strings = [format_proxy(p) for p in available_proxies]
+            proxy_ids = [p['id'] for p in available_proxies]
+
+            logging.info(f"Successfully obtained {len(proxy_strings)} proxies")
+            return proxy_strings, proxy_ids
+
+        except Exception as e:
+            logging.error(f"Error fetching proxies: {e}")
+            await asyncio.sleep(300)  # Wait 5 minutes before retrying
+
+def split_proxies(proxy_strings, proxy_ids):
+    """
+    Splits proxies between gem and main workers.
+    
+    Args:
+        proxy_strings (list): List of formatted proxy strings
+        proxy_ids (list): List of proxy IDs
+    
+    Returns:
+        tuple: (gem_proxies, main_proxies, gem_proxy_ids, main_proxy_ids)
+    """
+    total_proxies = len(proxy_strings)
+    gem_proxy_count = math.ceil(total_proxies * 0.2)  # 20% for gem fetcher
+    
+    # Split proxy strings
+    gem_proxies = proxy_strings[:gem_proxy_count]
+    main_proxies = proxy_strings[gem_proxy_count:]
+    
+    # Split proxy IDs
+    gem_proxy_ids = proxy_ids[:gem_proxy_count]
+    main_proxy_ids = proxy_ids[gem_proxy_count:]
+
+    return gem_proxies, main_proxies, gem_proxy_ids, main_proxy_ids
+
+async def main(main_started, main_finished, gem_proxy_queue):
     """Main function to periodically fetch listings for items and signal when finished."""
     global profitable_item_found
-    gem_proxy_ids = []  # Initialize at function start
-    main_proxy_ids = []  # Initialize at function start
 
-    try:
-        while True:
-            logging.debug("Main: Starting new fetch cycle.")
-            main_started.set()
-            profitable_item_found = False
-            main_cycle_start_timestamp = time.time()
+    while True:
+        logging.info("Main: Starting new fetch cycle")
+        main_started.set()  # Signal start of new cycle
+        profitable_item_found = False
+        main_cycle_start_timestamp = time.time()
 
-            try:
-                # Get and split proxies
-                (gem_proxies, main_proxies), (gem_proxy_ids, main_proxy_ids) = await get_and_split_proxies()
-                
-                if not main_proxies or not gem_proxies:
-                    logging.error("No proxies available. Waiting before retry...")
-                    await asyncio.sleep(300)  # Wait 5 minutes before retrying
-                    continue
+        try:
+            # Get proxies once for both main and gem fetcher
+            logging.info("Main: Fetching proxies for both main and gem workers")
+            proxy_strings, proxy_ids = await get_formatted_proxies()
+            logging.info(f"Main: Successfully obtained {len(proxy_strings)} total proxies")
 
-                # Create task queues
-                total_task_queue = asyncio.Queue()
-                task_queue = asyncio.Queue()
-
-                # Populate queues
-                for item in ITEMS + COURIERS:
-                    await total_task_queue.put(item)
-
-                # Start workers with main proxies
-                total_workers = [total_listings_worker(total_task_queue, task_queue, proxy) 
-                               for proxy in main_proxies]
-                await asyncio.gather(*total_workers)
-                logging.debug("Main: Total workers completed.")
-
-                # Add sentinel tasks
-                for _ in range(len(main_proxies)):
-                    await task_queue.put(None)
-
-                # Start main workers
-                main_workers = [worker(task_queue, proxy) for proxy in main_proxies]
-                await asyncio.gather(*main_workers)
-
-                if total_task_queue.empty() and task_queue.empty():
-                    main_finished.set()
-                    main_cycle_end_timestamp = time.time()
-                    save_fetch_timestamps(main_cycle_start_timestamp, main_cycle_end_timestamp)
-
-            finally:
-                # Only unlock if we have proxy IDs
-                if main_proxy_ids or gem_proxy_ids:
-                    await unlock_all_proxies(main_proxy_ids + gem_proxy_ids)
-
-            # Wait before next cycle
-            await asyncio.sleep(3600)
-            main_started.clear()
-            main_finished.clear()
-
-    except Exception as e:
-        logging.error(f"Error in main: {e}")
-        if main_proxy_ids or gem_proxy_ids:  # Only try to unlock if we have IDs
-            await unlock_all_proxies(main_proxy_ids + gem_proxy_ids)
-
-
-
-
-
-
-async def main_gem_histogram_fetcher(main_started):
-    """Periodically fetches gem data using dedicated proxies."""
-    gem_proxy_ids = []  # Initialize at function start
-
-    try:
-        while True:
-            await main_started.wait()  # Wait for main to start
-            logging.debug("Gem Fetcher: Starting new fetch cycle.")
+            # Split proxies
+            gem_proxies, main_proxies, gem_proxy_ids, main_proxy_ids = split_proxies(proxy_strings, proxy_ids)
+            logging.info(f"Main: Split proxies - Main: {len(main_proxies)}, Gem: {len(gem_proxies)}")
             
-            try:
-                # Get gem proxies
-                (gem_proxies, _), (gem_proxy_ids, _) = await get_and_split_proxies()
-                
-                if not gem_proxies:
-                    logging.error("No proxies available for gem fetcher")
-                    await asyncio.sleep(300)
-                    continue
+            # Create task queues
+            total_task_queue = asyncio.Queue()
+            task_queue = asyncio.Queue()
+            
+            # Share gem proxies through the passed queue
+            logging.info(f"Main: Sharing {len(gem_proxies)} gem proxies through queue")
+            for i in range(len(gem_proxies)):
+                await gem_proxy_queue.put((gem_proxies[i], gem_proxy_ids[i]))
+            logging.info("Main: Finished sharing gem proxies")
 
-                gems_data = load_gems_data()
-                gem_task_queue = asyncio.Queue()
+            # Populate queues
+            item_count = len(ITEMS) + len(COURIERS)
+            logging.info(f"Main: Populating task queue with {item_count} items")
+            for item in ITEMS + COURIERS:
+                await total_task_queue.put(item)
+            logging.info("Main: Task queue populated")
 
-                for gem_name, gem_info in gems_data.items():
-                    if item_name_id := gem_info.get("id"):
-                        await gem_task_queue.put((gem_name, item_name_id))
+            # Start total workers
+            logging.info(f"Main: Starting {len(main_proxies)} total listing workers")
+            total_workers = [total_listings_worker(total_task_queue, task_queue, proxy) 
+                           for proxy in main_proxies]
+            await asyncio.gather(*total_workers)
+            logging.info("Main: Total workers completed")
 
-                gem_tasks = [fetch_gem_data_worker(gem_task_queue, proxy) 
-                           for proxy in gem_proxies]
-                await asyncio.gather(*gem_tasks)
+            # Add sentinel tasks
+            logging.info(f"Main: Adding {len(main_proxies)} sentinel tasks")
+            for _ in range(len(main_proxies)):
+                await task_queue.put(None)
+            logging.info("Main: Sentinel tasks added")
 
-            finally:
-                # Only unlock if we have proxy IDs
-                if gem_proxy_ids:
-                    await unlock_all_proxies(gem_proxy_ids)
+            # Start main workers
+            logging.info(f"Main: Starting {len(main_proxies)} main workers")
+            main_workers = [worker(task_queue, proxy) for proxy in main_proxies]
+            await asyncio.gather(*main_workers)
+            logging.info("Main: Main workers completed")
 
-            main_started.clear()
-            await main_started.wait()
+            if total_task_queue.empty() and task_queue.empty():
+                logging.info("Main: All tasks completed, setting finished flag")
+                main_finished.set()
+                main_cycle_end_timestamp = time.time()
+                cycle_duration = main_cycle_end_timestamp - main_cycle_start_timestamp
+                logging.info(f"Main: Cycle completed in {cycle_duration:.2f} seconds")
+                save_fetch_timestamps(main_cycle_start_timestamp, main_cycle_end_timestamp)
 
-    except Exception as e:
-        logging.error(f"Error in gem fetcher: {e}")
-        if gem_proxy_ids:  # Only try to unlock if we have IDs
-            await unlock_all_proxies(gem_proxy_ids)
+        except Exception as e:
+            logging.error(f"Main: Error in main cycle: {e}", exc_info=True)
 
+        finally:
+            logging.info(f"Main: Unlocking {len(main_proxy_ids)} main proxies")
+            await unlock_proxies(main_proxy_ids)
+            logging.info("Main: Proxies unlocked")
+         
+        # Wait before next cycle
+        logging.info("Main: Starting cooldown period (900 seconds)")
+        main_started.clear()  # Clear the flag before sleeping
+        await asyncio.sleep(900)
+        logging.info("Main: Resetting flags for next cycle")
+        main_finished.clear()
 
+async def main_gem_histogram_fetcher(main_started, gem_proxy_queue):
+    """Periodically fetches gem data using dedicated proxies."""
+    while True:
+        logging.info("Gem Fetcher: Waiting for main to start")
+        await main_started.wait()  # Wait for main to start
+        main_started.clear()  # Clear the flag so we'll wait for the next cycle
+        logging.info("Gem Fetcher: Starting new fetch cycle")
+        
+        try:
+            # Get proxies from queue
+            logging.info("Gem Fetcher: Retrieving proxies from queue")
+            gem_proxies = []
+            gem_proxy_ids = []
+            
+            # Collect proxies until sentinel is received
+            while True:
+                try:
+                    logging.debug("Gem Fetcher: Waiting for next proxy from queue")
+                    proxy_data = await asyncio.wait_for(gem_proxy_queue.get(), timeout=5.0)
+                    logging.debug(f"Gem Fetcher: Received proxy data: {proxy_data}")
+                    
+                    if proxy_data is None:  # Check for sentinel
+                        logging.debug("Gem Fetcher: Received sentinel, breaking proxy collection loop")
+                        gem_proxy_queue.task_done()
+                        break
+                        
+                    proxy, proxy_id = proxy_data
+                    logging.debug(f"Gem Fetcher: Adding proxy {proxy_id} to collection")
+                    gem_proxies.append(proxy)
+                    gem_proxy_ids.append(proxy_id)
+                    gem_proxy_queue.task_done()
+                    
+                except asyncio.TimeoutError:
+                    logging.warning("Gem Fetcher: Timeout waiting for proxies, breaking collection loop")
+                    break
+
+            logging.info(f"Gem Fetcher: Retrieved {len(gem_proxies)} proxies from queue")
+
+            if not gem_proxies:
+                logging.warning("Gem Fetcher: No proxies available, waiting for next cycle")
+                continue
+
+            # Load gems data and create tasks
+            logging.info("Gem Fetcher: Loading gems data")
+            gems_data = load_gems_data()
+            gem_task_queue = asyncio.Queue()
+
+            # Create tasks
+            valid_gems = 0
+            for gem_name, gem_info in gems_data.items():
+                if item_name_id := gem_info.get("id"):
+                    await gem_task_queue.put((gem_name, item_name_id))
+                    valid_gems += 1
+            logging.info(f"Gem Fetcher: Created {valid_gems} tasks for processing")
+
+            # Process gems with available proxies
+            logging.info(f"Gem Fetcher: Starting {len(gem_proxies)} worker tasks")
+            gem_tasks = [fetch_gem_data_worker(gem_task_queue, proxy) 
+                       for proxy in gem_proxies]
+            await asyncio.gather(*gem_tasks)
+            logging.info("Gem Fetcher: All gem tasks completed")
+
+        except Exception as e:
+            logging.error(f"Gem Fetcher: Error in fetch cycle: {e}", exc_info=True)
+        
+        finally:
+            if gem_proxy_ids:
+                logging.info(f"Gem Fetcher: Unlocking {len(gem_proxy_ids)} gem proxies")
+                await unlock_proxies(gem_proxy_ids)
+                logging.info("Gem Fetcher: Proxies unlocked")
+            
+            logging.info("Gem Fetcher: Waiting for next cycle")
+            # Don't start a new cycle here, just continue to the top of the loop
+            # where it will wait for main_started
 
 async def main_all():
     """
@@ -1615,11 +1605,12 @@ async def main_all():
     """
     main_started = asyncio.Event()  # Flag for `main` start
     main_finished = asyncio.Event()  # Flag for `main` completion
-
+    gem_proxy_queue = asyncio.Queue()  # Queue for sharing gem proxies
+            
     logging.debug("Starting all tasks.")
     await asyncio.gather(
-        main(main_started, main_finished),
-        main_gem_histogram_fetcher(main_started),
+        main(main_started, main_finished, gem_proxy_queue),
+        main_gem_histogram_fetcher(main_started, gem_proxy_queue),
         monitor(main_finished),
         telegram_bot.background_bot_polling()  # Start bot polling as a background task
     )
@@ -1631,15 +1622,35 @@ if __name__ == "__main__":
     try:
         # Load environment variables
         load_dotenv()
+
+        # Global rate limit configuration
+        REQUEST_DELAY = int(os.getenv("REQUEST_DELAY"))  # Delay between individual requests for each worker
+        BATCH_DELAY = int(os.getenv("BATCH_DELAY"))    # Delay after every 100 listings
+        LISTINGS_PER_REQUEST = int(os.getenv("LISTINGS_PER_REQUEST"))  # Number of listings per request
+        LISTINGS_BEFORE_BATCH_DELAY = int(os.getenv("LISTINGS_BEFORE_BATCH_DELAY"))  # Trigger batch delay after this count
+        if not REQUEST_DELAY or not BATCH_DELAY or not LISTINGS_PER_REQUEST or not LISTINGS_BEFORE_BATCH_DELAY:
+            raise ValueError("Global rate limit configuration not found in environment variables")
+        
+        ITEMS, COURIERS, ALLOWED_GEMS_PRISMATIC, ALLOWED_GEMS_ETHEREAL = load_constants()
+        if not ITEMS or not COURIERS or not ALLOWED_GEMS_PRISMATIC or not ALLOWED_GEMS_ETHEREAL:
+            raise ValueError("Items, couriers, prismatic gems, or ethereal gems data not found in environment variables")
+        
+        TARGET_PROFIT = float(os.getenv("TARGET_PROFIT"))
+        STEAM_FEE = float(os.getenv("STEAM_FEE"))   
+        if not TARGET_PROFIT or not STEAM_FEE:
+            raise ValueError("Target profit or Steam fee not found in environment variables")
+        
         BOT_TOKEN = os.getenv('BOT_TOKEN')
         CHAT_ID = os.getenv('CHAT_ID')
         api_key = os.getenv("API_KEY")
+
+        
+        if not BOT_TOKEN or not CHAT_ID or not api_key:
+            raise ValueError("Bot token or Chat ID or API key not found in environment variables")
+        
         proxy_api = ProxyAPI(
             api_key
         )
-        if not BOT_TOKEN or not CHAT_ID:
-            raise ValueError("Bot token or Chat ID not found in environment variables")
-
         # Initialize the bot globally
         telegram_bot = TelegramAlertBot(
             token=BOT_TOKEN,
@@ -1649,11 +1660,6 @@ if __name__ == "__main__":
 
         # Initialize the database
         init_db()
-        """
-        all_items = fetch_all_items_from_db()
-        for item in all_items:
-            logging.debug(f"Item: {item}")
-        """
 
         # Print confirmation and run the main async program
         print("Database initialized successfully.")
