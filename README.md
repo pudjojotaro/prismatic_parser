@@ -185,15 +185,7 @@ To determine profitability, the system compares the price of an item with the co
 ## Configuration
 
 ### Proxy Configuration
-Proxies are loaded from the `proxies/` directory. Ensure the following files are populated with valid proxy addresses:
-- `proxies_items.txt`: Proxy list for item data fetching.
-- `proxies_gems.txt`: Proxy list for gem data fetching.
-
-### Constants
-Key constants can be configured in the project settings:
-- `LISTINGS_PER_REQUEST`: Number of listings fetched per request.
-- `REQUEST_DELAY`: Delay between requests to avoid rate limits.
-- `BATCH_DELAY`: Additional delay between processing batches of requests.
+Proxies are loaded using [FastAPI-Proxy-API](https://github.com/pudjojotaro/fastapi-proxy-api) proxy api. The application sends a request to get all available proxies, constructs them into addresses and after being complete with the cycle sends a request to unlock them so that other projects can use the proxies. 
 
 ---
 
