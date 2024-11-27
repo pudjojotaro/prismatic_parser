@@ -21,8 +21,8 @@ class AlertService:
         await self.telegram_bot.event_trigger(Messages.SHUTDOWN, "Prismatic_Parser_Bot")
         
     async def send_no_profit_alert(self, fetch_start: float, fetch_end: float):
-        start_time = datetime.fromtimestamp(fetch_start).strftime('%H:%M:%S')
-        end_time = datetime.fromtimestamp(fetch_end).strftime('%H:%M:%S')
+        start_time = datetime.fromtimestamp(fetch_start).strftime('%b %d %H:%M:%S')
+        end_time = datetime.fromtimestamp(fetch_end).strftime('%b %d %H:%M:%S')
         message = Messages.NO_PROFIT.format(start_time, end_time)
         await self.telegram_bot.event_trigger(message, "Prismatic_Parser_Bot")
         
