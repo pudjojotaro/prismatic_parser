@@ -164,17 +164,34 @@ class ItemService:
             worker_logger.info("Item processor finished")
         
     async def _fetch_total_listings(self, client: SteamPublicClient, item: str) -> int:
-        try:
-            _, total_count, _ = await client.get_item_listings(
-                item,
-                App.DOTA2,
-                count=settings.LISTINGS_PER_REQUEST,
-                start=0
-            )
-            return total_count
-        except Exception as e:
-            logging.error(f"Error fetching total listings for item '{item}': {e}")
-            return 0
+        max_retries = 3
+        retry_delay = 5
+        
+        for attempt in range(max_retries):
+            try:
+                _, total_count, _ = await client.get_item_listings(
+                    item,
+                    App.DOTA2,
+                    count=settings.LISTINGS_PER_REQUEST,
+                    start=0
+                )
+                
+                if total_count == 0:
+                    self.logger.warning(f"Zero listings returned for '{item}'. This may indicate an API issue.")
+                else:
+                    self.logger.info(f"Successfully fetched {total_count} total listings for '{item}'")
+                
+                return total_count
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    self.logger.warning(f"Attempt {attempt + 1} failed to fetch listings for '{item}': {e}")
+                    await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                else:
+                    self.logger.error(f"Failed after {max_retries} attempts to fetch listings for '{item}': {e}")
+                    return 0
+
+        return 0
         
     async def _fetch_listings_for_item_range(self, client: SteamPublicClient, item: str, start: int):
         try:
