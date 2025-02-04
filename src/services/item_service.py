@@ -68,7 +68,7 @@ class ItemService:
                     
                 worker_logger.set_item(item)
                 try:
-                    worker_logger.info("Fetching total listings")
+                    worker_logger.info(f"Fetching total listings for item: {item}")
                     total_count = await self._fetch_total_listings(client, item)
                     worker_logger.info(f"Found {total_count} total listings")
                     
@@ -167,15 +167,18 @@ class ItemService:
         max_retries = 3
         retry_delay = 5
         
+        # Add debug logging for the exact item string
+        self.logger.debug(f"Item string: '{item}', length: {len(item)}, bytes: {item.encode('utf-8')}")
+        
         for attempt in range(max_retries):
             try:
                 _, total_count, _ = await client.get_item_listings(
-                    item,
+                    item.strip(),  # Ensure no whitespace
                     App.DOTA2,
                     count=settings.LISTINGS_PER_REQUEST,
                     start=0
                 )
-                
+                self.logger.info(f"Total listings found: {total_count}")
                 if total_count == 0:
                     self.logger.warning(f"Zero listings returned for '{item}'. This may indicate an API issue.")
                 else:
