@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from ..config.constants import ALLOWED_GEMS_PRISMATIC, ALLOWED_GEMS_ETHEREAL, COURIERS, ITEMS
 import logging
 import re
+import math
 
 def parse_market_listings(market_listings):
     logger = logging.getLogger('parsing')
@@ -118,41 +119,107 @@ def parse_gem_text_both_gems(gem_text):
     return ethereal_gem, prismatic_gem
 
 
-
-def process_histogram(histogram_data):
-    """Process the histogram data from Steam API.
-    
-    Note: We ignore sell order parsing errors as we only care about buy orders.
-    Some high-value items (4+ digit prices) may cause parsing issues in sell orders
-    but this doesn't affect our buy order processing.
+def _robust_parse_price(raw_price: str) -> float:
+    """
+    First try a direct float parse. If it fails, strip out anything that's not
+    digit, decimal point, or minus sign, and parse again. Divide final float by 100 
+    (to match your existing logic).
     """
     try:
-        if not histogram_data or 'buy_order_graph' not in histogram_data:
-            return None
+        return float(raw_price) / 100
+    except ValueError:
+        logging.warning(f"Could not parse price '{raw_price}', attempting fallback cleanup.")
+        cleaned = re.sub(r'[^0-9.-]', '', raw_price)
+        return float(cleaned) / 100
 
-        buy_orders = []
-        buy_order_graph = histogram_data.get('buy_order_graph', [])
-        
-        for price_point in buy_order_graph:
-            if len(price_point) >= 2:
-                price = float(price_point[0])
-                quantity = int(price_point[1])
-                buy_orders.append([price, quantity])
-        
-        # Even if sell_order_graph parsing fails, we don't care
-        # Just log a warning if there's an issue
+def _robust_parse_quantity(raw_quantity: str) -> int:
+    """
+    First try to parse as int. If it fails, log a warning, then parse as float and floor.
+    If that still fails, strip out non-digit, non-decimal chars and parse again.
+    """
+    try:
+        return int(raw_quantity)
+    except ValueError:
+        logging.warning(f"Non-integer quantity '{raw_quantity}'. Will try float+floor approach.")
         try:
-            sell_order_graph = histogram_data.get('sell_order_graph', [])
-            for price_point in sell_order_graph:
-                price = float(price_point[0])  # This might fail for high values
-        except ValueError as e:
-            logging.warning(f"Ignoring sell order parsing error (expected for high-value items): {e}")
+            return math.floor(float(raw_quantity))
+        except ValueError:
+            logging.warning(f"Still couldn't parse quantity '{raw_quantity}' - final cleanup step.")
+            cleaned = re.sub(r'[^0-9.-]', '', raw_quantity)
+            return math.floor(float(cleaned))
+
+def process_histogram(histogram):
+    """
+    Original logic for processing histogram buy orders,
+    extended to handle unexpected strings more gracefully.
+    """
+    logger = logging.getLogger('parsing')
+
+    # Empty or None histogram?
+    if not histogram:
+        return {
+            "buy_orders": [],
+            "buy_order_length": 0,
+        }
+
+    # Check if 'buy_order_graph' exists
+    if not hasattr(histogram, 'buy_order_graph'):
+        logger.warning("Histogram missing buy_order_graph attribute")
+        logger.debug(f"Raw histogram data: {histogram}")
+        return {
+            "buy_orders": [],
+            "buy_order_length": 0,
+        }
+
+    try:
+        buy_orders = []
+        logger.debug(f"Processing buy_order_graph: {histogram.buy_order_graph}")
+
+        # Process each buy order entry
+        for entry in histogram.buy_order_graph:
+            try:
+                # Convert price
+                price_str = str(entry.price).replace(',', '').strip()
+                price = _robust_parse_price(price_str)
+
+                # Convert quantity
+                quantity_str = str(entry.quantity).replace(',', '').strip()
+                quantity = _robust_parse_quantity(quantity_str)
+
+                buy_orders.append([price, quantity])
+
+            except (ValueError, AttributeError) as e:
+                # Only skip this one malformed entry
+                logger.warning(f"Skipping malformed buy order entry {entry}: {e}")
+                continue
+
+        # If no buy orders, return empty
+        if not buy_orders:
+            return {
+                "buy_orders": [],
+                "buy_order_length": 0,
+            }
+        
+        # Convert cumulative data to incremental:
+        for i in range(len(buy_orders) - 1, 0, -1):
+            current_quantity = buy_orders[i][1]
+            previous_quantity = buy_orders[i - 1][1]
+            # Subtract the previous from the current to get incremental quantity
+            buy_orders[i][1] = current_quantity - previous_quantity
+        
+        buy_order_length = sum(order[1] for order in buy_orders if order[1] > 0)
         
         return {
             "buy_orders": buy_orders,
-            "buy_order_length": len(buy_orders)
+            "buy_order_length": buy_order_length,
         }
-        
     except Exception as e:
-        logging.error(f"Error processing histogram: {e}")
-        return None
+        # Catch-all for any unexpected failures
+        logger.error(f"Error processing histogram: {str(e)}")
+        logger.error(f"Raw histogram data: {histogram}")
+        if hasattr(histogram, 'buy_order_graph'):
+            logger.error(f"Buy order graph: {histogram.buy_order_graph}")
+        return {
+            "buy_orders": [],
+            "buy_order_length": 0,
+        }
