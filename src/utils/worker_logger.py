@@ -24,3 +24,6 @@ class WorkerLogger:
         
     def set_item(self, item_name: str):
         self.item_name = item_name
+
+    def warning(self, message: str):
+        self.logger.warning(self._format_message(message))
