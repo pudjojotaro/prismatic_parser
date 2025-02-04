@@ -68,18 +68,22 @@ class ItemService:
                     
                 worker_logger.set_item(item)
                 try:
+                    # Add delay between requests
+                    await asyncio.sleep(1)
+                    
                     worker_logger.info(f"Fetching total listings for item: {item}")
                     total_count = await self._fetch_total_listings(client, item)
                     worker_logger.info(f"Found {total_count} total listings")
                     
-                    # Split into batches of LISTINGS_PER_REQUEST
-                    for start in range(0, total_count, settings.LISTINGS_PER_REQUEST):
-                        batch = {
-                            'item': item,
-                            'start': start,
-                            'count': min(settings.LISTINGS_PER_REQUEST, total_count - start)
-                        }
-                        await output_queue.put(batch)
+                    if total_count > 0:
+                        # Split into batches of 100 (matching test.py)
+                        for start in range(0, total_count, 100):
+                            batch = {
+                                'item': item,
+                                'start': start,
+                                'count': min(100, total_count - start)
+                            }
+                            await output_queue.put(batch)
                             
                 except Exception as e:
                     worker_logger.error(f"Error fetching total listings: {e}", exc_info=True)
@@ -167,18 +171,15 @@ class ItemService:
         max_retries = 3
         retry_delay = 5
         
-        # Add debug logging for the exact item string
-        self.logger.debug(f"Item string: '{item}', length: {len(item)}, bytes: {item.encode('utf-8')}")
-        
         for attempt in range(max_retries):
             try:
                 _, total_count, _ = await client.get_item_listings(
-                    item.strip(),  # Ensure no whitespace
+                    item,
                     App.DOTA2,
-                    count=settings.LISTINGS_PER_REQUEST,
+                    count=settings.LISTINGS_PER_REQUEST, #15->100
                     start=0
                 )
-                self.logger.info(f"Total listings found: {total_count}")
+                
                 if total_count == 0:
                     self.logger.warning(f"Zero listings returned for '{item}'. This may indicate an API issue.")
                 else:
@@ -189,7 +190,7 @@ class ItemService:
             except Exception as e:
                 if attempt < max_retries - 1:
                     self.logger.warning(f"Attempt {attempt + 1} failed to fetch listings for '{item}': {e}")
-                    await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                    await asyncio.sleep(retry_delay * (attempt + 1))
                 else:
                     self.logger.error(f"Failed after {max_retries} attempts to fetch listings for '{item}': {e}")
                     return 0
