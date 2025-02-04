@@ -119,60 +119,40 @@ def parse_gem_text_both_gems(gem_text):
 
 
 
-def process_histogram(histogram):
-    logger = logging.getLogger('parsing')
+def process_histogram(histogram_data):
+    """Process the histogram data from Steam API.
     
-    if not histogram:
-        return {
-            "buy_orders": [],
-            "buy_order_length": 0,
-        }
-    
-    if not hasattr(histogram, 'buy_order_graph'):
-        logger.warning("Histogram missing buy_order_graph attribute")
-        logger.debug(f"Raw histogram data: {histogram}")
-        return {
-            "buy_orders": [],
-            "buy_order_length": 0,
-        }
-        
+    Note: We ignore sell order parsing errors as we only care about buy orders.
+    Some high-value items (4+ digit prices) may cause parsing issues in sell orders
+    but this doesn't affect our buy order processing.
+    """
     try:
+        if not histogram_data or 'buy_order_graph' not in histogram_data:
+            return None
+
         buy_orders = []
-        logger.debug(f"Processing buy_order_graph: {histogram.buy_order_graph}")
+        buy_order_graph = histogram_data.get('buy_order_graph', [])
         
-        for entry in histogram.buy_order_graph:
-            try:
-                price = float(str(entry.price).replace(',', '')) / 100
-                quantity = int(entry.quantity)
+        for price_point in buy_order_graph:
+            if len(price_point) >= 2:
+                price = float(price_point[0])
+                quantity = int(price_point[1])
                 buy_orders.append([price, quantity])
-            except (ValueError, AttributeError):
-                continue
         
-        if not buy_orders:
-            return {
-                "buy_orders": [],
-                "buy_order_length": 0,
-            }
-            
-        # Process quantities
-        for i in range(len(buy_orders) - 1, 0, -1):
-            current_quantity = buy_orders[i][1]
-            previous_quantity = buy_orders[i - 1][1]
-            reduced_quantity = current_quantity - previous_quantity
-            buy_orders[i][1] = reduced_quantity
-            
-        buy_order_length = sum(order[1] for order in buy_orders if order[1] > 0)
+        # Even if sell_order_graph parsing fails, we don't care
+        # Just log a warning if there's an issue
+        try:
+            sell_order_graph = histogram_data.get('sell_order_graph', [])
+            for price_point in sell_order_graph:
+                price = float(price_point[0])  # This might fail for high values
+        except ValueError as e:
+            logging.warning(f"Ignoring sell order parsing error (expected for high-value items): {e}")
         
         return {
             "buy_orders": buy_orders,
-            "buy_order_length": buy_order_length,
+            "buy_order_length": len(buy_orders)
         }
+        
     except Exception as e:
-        logger.error(f"Error processing histogram: {str(e)}")
-        logger.error(f"Raw histogram data: {histogram}")
-        if hasattr(histogram, 'buy_order_graph'):
-            logger.error(f"Buy order graph: {histogram.buy_order_graph}")
-        return {
-            "buy_orders": [],
-            "buy_order_length": 0,
-        }
+        logging.error(f"Error processing histogram: {e}")
+        return None
