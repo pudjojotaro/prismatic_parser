@@ -39,7 +39,7 @@ class ProxyService:
 
     def distribute_proxies(self, proxies: List[str]) -> Tuple[List[str], List[str]]:
         total_proxies = len(proxies)
-        gem_proxy_count = math.ceil(total_proxies * 0.2)
+        gem_proxy_count = math.ceil(total_proxies * settings.GEM_PROXY_RATIO)
         gem_proxies = proxies[:gem_proxy_count]
         item_proxies = proxies[gem_proxy_count:]
         return gem_proxies, item_proxies

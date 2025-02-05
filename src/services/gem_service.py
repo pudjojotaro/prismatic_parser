@@ -70,7 +70,7 @@ class GemService:
                 worker_logger.set_item(gem_name)
 
                 try:
-                    # Implement a retry loop for potential connection errors
+                    # Implement a retry loop with exponential backoff
                     max_retries = 3
                     for attempt in range(max_retries):
                         try:
@@ -80,7 +80,9 @@ class GemService:
                         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                             worker_logger.warning(f"Connection error: {e}, attempt {attempt+1}/{max_retries}")
                             if attempt < max_retries - 1:
-                                await asyncio.sleep(1)  # short backoff
+                                backoff = (2 ** attempt) * 2  # 2s, 4s, 8s
+                                worker_logger.info(f"Waiting {backoff}s before retry")
+                                await asyncio.sleep(backoff)
                             else:
                                 worker_logger.error(f"Max retries reached, requeuing gem: {gem_name}")
                                 # Put the task back in the queue for other workers

@@ -134,17 +134,16 @@ def _robust_parse_price(raw_price: str) -> float:
 
 def _robust_parse_quantity(raw_quantity: str) -> int:
     """
-    First try to parse as int. If it fails, log a warning, then parse as float and floor.
-    If that still fails, strip out non-digit, non-decimal chars and parse again.
+    First try to parse as int. If it fails, try parsing as float and floor it.
     """
     try:
         return int(raw_quantity)
     except ValueError:
-        logging.warning(f"Non-integer quantity '{raw_quantity}'. Will try float+floor approach.")
         try:
+            # Handle decimal numbers by converting to float first
             return math.floor(float(raw_quantity))
         except ValueError:
-            logging.warning(f"Still couldn't parse quantity '{raw_quantity}' - final cleanup step.")
+            logging.warning(f"Could not parse quantity '{raw_quantity}', cleaning and retrying")
             cleaned = re.sub(r'[^0-9.-]', '', raw_quantity)
             return math.floor(float(cleaned))
 
