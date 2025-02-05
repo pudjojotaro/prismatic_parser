@@ -9,3 +9,5 @@ bs4==0.0.1
 fake-useragent==1.5.1
 pandas==2.1.1
 pytelegrambotapi==4.10.0
+PyQt5==5.15.9
+PyQtWebEngine==5.15.9
