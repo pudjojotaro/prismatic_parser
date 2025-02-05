@@ -14,16 +14,16 @@ class WorkerLogger:
         return f"{prefix} {message}"
         
     def info(self, message: str):
-        self.logger.info(self._format_message(message))
+        self.logger.info(self._format_message(message), extra={"worker_info": {"proxy": self.proxy, "item": self.item_name}})
         
     def error(self, message: str, exc_info=None):
-        self.logger.error(self._format_message(message), exc_info=exc_info)
+        self.logger.error(self._format_message(message), exc_info=exc_info, extra={"worker_info": {"proxy": self.proxy, "item": self.item_name}})
         
     def debug(self, message: str):
-        self.logger.debug(self._format_message(message))
+        self.logger.debug(self._format_message(message), extra={"worker_info": {"proxy": self.proxy, "item": self.item_name}})
         
     def set_item(self, item_name: str):
         self.item_name = item_name
 
     def warning(self, message: str):
-        self.logger.warning(self._format_message(message))
+        self.logger.warning(self._format_message(message), extra={"worker_info": {"proxy": self.proxy, "item": self.item_name}})

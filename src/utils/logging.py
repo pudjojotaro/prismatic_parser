@@ -2,7 +2,7 @@ import logging
 import sys
 from pathlib import Path
 
-def setup_logging():
+def setup_logging(log_queue=None):
     # Create logs directory if it doesn't exist
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
@@ -23,14 +23,23 @@ def setup_logging():
     
     console_handler = logging.StreamHandler(sys.stdout)
     
-    # Configure logging
+    handlers = [file_handler, console_handler]
+    
+    # If a log_queue is provided, add our custom queue handler.
+    if log_queue is not None:
+        from src.utils.queue_log_handler import QueueLogHandler
+        queue_handler = QueueLogHandler(log_queue)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        queue_handler.setFormatter(formatter)
+        handlers.append(queue_handler)
+    
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[file_handler, console_handler]
+        handlers=handlers
     )
     
-    # Create loggers for different components
+    # Create and return loggers for the different components
     loggers = {
         'item_service': logging.getLogger('item_service'),
         'gem_service': logging.getLogger('gem_service'),
