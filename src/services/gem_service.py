@@ -63,57 +63,56 @@ class GemService:
                 task = await gem_task_queue.get()
                 if task is None:
                     gem_task_queue.task_done()
+                    worker_logger.info("Stop signal received. Exiting worker loop.")
                     break
                 
                 gem_name, item_name_id = task
-                retry_count = 0
-                max_retries = 3
-                
-                while retry_count < max_retries:
-                    try:
-                        worker_logger.info("Fetching histogram")
-                        histogram = await client.get_item_orders_histogram(item_name_id)
-                        # Process on success...
-                        break  # Done, exit retry loop
-                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                        retry_count += 1
-                        if retry_count >= max_retries:
-                            # Give up completely (or requeue again, depending on strategy)
-                            await gem_task_queue.put((gem_name, item_name_id))
-                            # Instead of breaking the worker, just break the retry loop
-                            # and let the worker continue to other tasks
-                            break
-                        else:
-                            # Optional backoff sleep
-                            await asyncio.sleep(1)
-                    
-                    except (TypeError, ValueError, AttributeError) as e:
-                        # Save empty buy orders for data parse errors
-                        worker_logger.error(f"Invalid histogram data: {str(e)}")
-                        gem = Gem(
-                            name=gem_name,
-                            buy_orders="[]",
-                            buy_order_length=0,
-                            timestamp=current_time
-                        )
-                        self.db_repository.save_gem(gem)
+                worker_logger.set_item(gem_name)
+
+                try:
+                    # Implement a retry loop for potential connection errors
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            worker_logger.info(f"Fetching histogram (attempt {attempt+1}/{max_retries})")
+                            histogram = await client.get_item_orders_histogram(item_name_id)
+                            break  # Successfully retrieved, break out of retry loop
+                        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                            worker_logger.warning(f"Connection error: {e}, attempt {attempt+1}/{max_retries}")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(1)  # short backoff
+                            else:
+                                worker_logger.error(f"Max retries reached, requeuing gem: {gem_name}")
+                                # Put the task back in the queue for other workers
+                                await gem_task_queue.put((gem_name, item_name_id))
+                                # Stop processing here so a new worker can handle this item
+                                break
+                    else:
+                        # If we never break inside for loop, something unexpected happened
+                        worker_logger.error("Retry loop exited unexpectedly")
                         continue
-                    
-                    # Process the histogram
+
+                    # If histogram is not set, it means we failed all retries
+                    if 'histogram' not in locals():
+                        continue
+
+                    # Handle data-errors: TypeError, ValueError, AttributeError
+                    # outside the retry loop below:
                     if isinstance(histogram, tuple):
                         histogram = histogram[0]
-                    
+
+                    # Process histogram
                     parsed_data = process_histogram(histogram)
                     buy_orders = "[]"
                     buy_order_length = 0
-                    
+
                     if parsed_data and parsed_data["buy_orders"]:
                         buy_orders = str(parsed_data["buy_orders"])
                         buy_order_length = parsed_data["buy_order_length"]
                         worker_logger.info(f"Successfully parsed histogram: {buy_order_length} buy orders")
                     else:
                         worker_logger.info("No buy orders found in histogram")
-                    
+
                     gem = Gem(
                         name=gem_name,
                         buy_orders=buy_orders,
@@ -121,18 +120,26 @@ class GemService:
                         timestamp=current_time
                     )
                     self.db_repository.save_gem(gem)
-                        
+
+                except (TypeError, ValueError, AttributeError) as data_error:
+                    # Data parse errors -> Save empty buy orders
+                    worker_logger.error(f"Invalid histogram data: {data_error}")
+                    gem = Gem(
+                        name=gem_name,
+                        buy_orders="[]",
+                        buy_order_length=0,
+                        timestamp=current_time
+                    )
+                    self.db_repository.save_gem(gem)
                 except Exception as e:
-                    worker_logger.error(f"Error processing gem: {str(e)}", exc_info=True)
+                    worker_logger.error(f"Error processing gem: {e}", exc_info=True)
                 finally:
-                    # Mark the task as done
                     gem_task_queue.task_done()
                     items_processed += 1
-                    if items_processed >= 5:
-                        worker_logger.debug(f"Sleeping for {settings.REQUEST_DELAY}s")
+                    if items_processed >= 3:
+                        worker_logger.debug(f"Sleeping for {settings.REQUEST_DELAY}s to rate-limit requests.")
                         await asyncio.sleep(settings.REQUEST_DELAY)
                         items_processed = 0
-        
         finally:
             await client.session.close()
             worker_logger.info("Worker finished")
