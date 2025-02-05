@@ -18,6 +18,7 @@
 - [Core Components](#core-components)
 - [Data Flow](#data-flow)
 - [Database Schema](#database-schema)
+- [Proxy Management](#proxy-management)
 - [Profitability Analysis](#profitability-analysis)
 - [Configuration](#configuration)
 - [Technology Stack](#technology-stack)
@@ -25,7 +26,24 @@
 
 ---
 ## How it works
+### Main Loop
+1. **Proxy Acquisition and Distribution**  
+   - The system retrieves available proxies using a FastAPI-based proxy API.
+   - The proxies are then randomized and partitioned into two exclusive sets: one for gem data fetching and processing, and another for fetching item market listings.
 
+2. **Concurrent Data Fetching**  
+   - **Item Service:** Uses a shared queue to first retrieve total listing counts for items (including couriers), and then fetches detailed market listings. It parses each listing to extract gem information using a dedicated parser.
+   - **Gem Service:** Uses a separate worker pool to retrieve gem buy order histograms from the proxies. It processes these histograms (with retry mechanisms and exponential backoff) and compares new buy order data with existing records in the database. If discrepancies exceed a threshold, the update is flagged accordingly.
+   - Both services include robust error handling. Upon consecutive failures (after three retry attempts), tasks are requeued so that other available proxies can process them.
+
+3. **Monitoring and Notification**  
+   - After fetching and processing, the Monitoring Service compares item prices against the combined value of the associated gems.
+   - If an item's profit potential exceeds the target threshold, the system sends an alert via Telegram.
+   - All processes are timestamped to enable historical analysis of fetch cycles and profitability trends.
+
+4. **Cleanup**  
+   - Regardless of the outcome, proxies are unlocked at the end of each cycle to free them up for use by other projects.
+   
 ### Couriers and Arcana Items on Dota 2 Steam Marketplace
 - **Unusual Couriers**: Almost all Unusual quality couriers have 2 embedded gems: Prismatic and Ethereal, and after being purchased, allow to extract the gems while destroying the Item itself. The gems can be re-sold on the Steam Marketplace.
 
@@ -56,19 +74,25 @@
 ## Core Components
 
 ### 1. Market Data Fetchers
-- **Total Listings Worker**: Fetches the total number of available listings for each item
-- **Main Worker**: Fetches the listings and parses the information to get the gems. Pauses periodically to avoid hitting rate limits.
-- **Gem Data Worker**: Retrieves and processes buy orders for both prismatic and ethereal gems
+- **Item Service**: Retrieves total listings for each item, divides the tasks into batches, and processes market listings to extract gem data. Features include:
+  - Asynchronous workers with independent queues.
+  - Retry mechanisms with exponential backoff.
+  - Requeuing failed tasks for robust error recovery.
 
 ### 2. Data Processing
-- **Market Listing Parser**: Extracts gem information using BeautifulSoup
-- **Buy Order Processing**: Normalizes and processes gem buy order data
-- **Database Operations**: Handles CRUD operations for items, gems, and comparisons
+- **Parsing Module**: Uses BeautifulSoup to extract gem names and other necessary details from the marketplace HTML.
 
-### 3. Monitoring System
-- **Profitability Monitor**: After the latest fetching cycles are done, compares the prices in all items with their respective gem prices
-- **Alert System**: Sends notifications via Telegram when profitable items are found
-- **Timestamp Tracking**: Maintains fetch cycles for historical analysis
+### 3. Gem Data Workers
+- **Gem Service**: Fetches gem histograms via proxies, processes buy orders, compares against existing buy orders using percentage difference checks, and updates the database accordingly. Implements a retry loop for connection-level errors, requeuing tasks to be processed by another worker if a proxy fails three times.
+
+### 4. Proxy Service
+- Contacts the FastAPI-Proxy-API to fetch all available proxies.
+- Randomizes and partitions the proxy list into two non-overlapping sets (using a configurable ratio) so that gem and item workers do not share the same proxies.
+- Unlocks proxies after each cycle to ensure continuous availability.
+
+### 5. Monitoring and Alerting
+- **Monitoring Service**: Compares each item's price with the computed combined gem price. Calculates the expected profit after accounting for Steam fees and target margins.
+- **Telegram Alert Bot**: Sends immediate alerts if any item is deemed profitable.
 
 ---
 
@@ -137,7 +161,15 @@ The database contains three main tables:
 | `prismatic_gem_price`| REAL    | Price of the associated prismatic gem.        |
 | `ethereal_gem_price` | REAL    | Price of the associated ethereal gem.         |
 | `combined_gem_price` | REAL    | Combined price of both gems.                  |
-| `expected_profit`    | REAL    | Calculated expected profit for the item.      |
+| `expected_profit`    | REAL    | Calculated expected profit.                   |
+
+---
+
+## Proxy Management
+
+- The **Proxy Service** obtains live proxies from a FastAPI-driven Proxy API and formats them as connection URLs.
+- Before each cycle, the proxies are randomized and then partitioned between gem workers and item workers using a configurable ratio. This ensures that the same proxy is not used concurrently by different service workers.
+- After the data fetching cycle is complete, all proxies are unlocked (released) so that they can be reused for subsequent cycles or by other projects.
 
 ---
 
