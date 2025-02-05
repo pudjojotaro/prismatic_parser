@@ -15,6 +15,7 @@
 ## Table of Contents
 - [Introduction](#introduction)
 - [How It Works](#how-it-works)
+- [Couriers and Arcana Items on Dota 2 Steam Marketplace](#couriers-and-arcana-items-on-dota-2-steam-marketplace)
 - [Core Components](#core-components)
 - [Data Flow](#data-flow)
 - [Database Schema](#database-schema)
@@ -44,6 +45,8 @@
 4. **Cleanup**  
    - Regardless of the outcome, proxies are unlocked at the end of each cycle to free them up for use by other projects.
    
+---
+
 ### Couriers and Arcana Items on Dota 2 Steam Marketplace
 - **Unusual Couriers**: Almost all Unusual quality couriers have 2 embedded gems: Prismatic and Ethereal, and after being purchased, allow to extract the gems while destroying the Item itself. The gems can be re-sold on the Steam Marketplace.
 
