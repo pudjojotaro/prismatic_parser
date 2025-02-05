@@ -62,22 +62,31 @@ class GemService:
             while True:
                 task = await gem_task_queue.get()
                 if task is None:
-                    # Stop signal
                     gem_task_queue.task_done()
                     break
                 
                 gem_name, item_name_id = task
-                worker_logger.set_item(gem_name)
+                retry_count = 0
+                max_retries = 3
                 
-                try:
-                    worker_logger.info("Fetching histogram")
+                while retry_count < max_retries:
                     try:
+                        worker_logger.info("Fetching histogram")
                         histogram = await client.get_item_orders_histogram(item_name_id)
+                        # Process on success...
+                        break  # Done, exit retry loop
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                        # Proxy or networking error, requeue task for other workers
-                        worker_logger.error(f"Connection error: {str(e)}; requeuing task.")
-                        await gem_task_queue.put((gem_name, item_name_id))
-                        break  # Exit this worker so other proxies can pick up tasks
+                        retry_count += 1
+                        if retry_count >= max_retries:
+                            # Give up completely (or requeue again, depending on strategy)
+                            await gem_task_queue.put((gem_name, item_name_id))
+                            # Instead of breaking the worker, just break the retry loop
+                            # and let the worker continue to other tasks
+                            break
+                        else:
+                            # Optional backoff sleep
+                            await asyncio.sleep(1)
+                    
                     except (TypeError, ValueError, AttributeError) as e:
                         # Save empty buy orders for data parse errors
                         worker_logger.error(f"Invalid histogram data: {str(e)}")
@@ -119,7 +128,7 @@ class GemService:
                     # Mark the task as done
                     gem_task_queue.task_done()
                     items_processed += 1
-                    if items_processed >= 3:
+                    if items_processed >= 5:
                         worker_logger.debug(f"Sleeping for {settings.REQUEST_DELAY}s")
                         await asyncio.sleep(settings.REQUEST_DELAY)
                         items_processed = 0
