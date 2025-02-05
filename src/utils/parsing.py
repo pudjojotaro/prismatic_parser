@@ -134,18 +134,30 @@ def _robust_parse_price(raw_price: str) -> float:
 
 def _robust_parse_quantity(raw_quantity: str) -> int:
     """
-    First try to parse as int. If it fails, try parsing as float and floor it.
+    First try to parse as int. If it fails, try parsing as float
+    and ensure the result is an integer (i.e. has no fractional component).
+    If the fractional component is nonzero (e.g. '1522.60'), consider it invalid
+    and raise a ValueError to signal that this buy order should be skipped.
     """
     try:
         return int(raw_quantity)
     except ValueError:
         try:
-            # Handle decimal numbers by converting to float first
-            return math.floor(float(raw_quantity))
+            val = float(raw_quantity)
+            if not val.is_integer():
+                # The raw quantity is fractional (e.g. a price), so it's not valid.
+                raise ValueError(f"Quantity '{raw_quantity}' is fractional, hence not valid.")
+            return int(val)
         except ValueError:
             logging.warning(f"Could not parse quantity '{raw_quantity}', cleaning and retrying")
             cleaned = re.sub(r'[^0-9.-]', '', raw_quantity)
-            return math.floor(float(cleaned))
+            try:
+                val = float(cleaned)
+                if not val.is_integer():
+                    raise ValueError(f"Cleaned quantity '{cleaned}' is fractional.")
+                return int(val)
+            except ValueError:
+                raise ValueError(f"Unable to parse quantity '{raw_quantity}' after cleaning.")
 
 def process_histogram(histogram):
     """
