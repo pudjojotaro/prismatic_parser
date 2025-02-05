@@ -103,22 +103,46 @@ class GemService:
                     if isinstance(histogram, tuple):
                         histogram = histogram[0]
 
-                    # Process histogram
+                    # Process histogram and obtain new parsed buy orders
                     parsed_data = process_histogram(histogram)
-                    buy_orders = "[]"
-                    buy_order_length = 0
+                    new_orders = []
+                    new_order_length = 0
 
                     if parsed_data and parsed_data["buy_orders"]:
-                        buy_orders = str(parsed_data["buy_orders"])
-                        buy_order_length = parsed_data["buy_order_length"]
-                        worker_logger.info(f"Successfully parsed histogram: {buy_order_length} buy orders")
+                        new_orders = parsed_data["buy_orders"]
+                        new_order_length = parsed_data["buy_order_length"]
+                        worker_logger.info(f"Successfully parsed histogram: {new_order_length} buy orders")
                     else:
                         worker_logger.info("No buy orders found in histogram")
-
+                    
+                    # Compare with existing buy orders if available
+                    existing_gem = self.db_repository.get_gem(gem_name)
+                    if existing_gem is not None and existing_gem.buy_orders and new_orders:
+                        try:
+                            old_orders = existing_gem.parsed_buy_orders
+                            if old_orders:  # if there are existing buy orders
+                                N = min(5, len(new_orders), len(old_orders))
+                                differences = []
+                                for i in range(N):
+                                    price_old, qty_old = old_orders[i]
+                                    price_new, qty_new = new_orders[i]
+                                    price_diff = abs(price_new - price_old) / price_old if price_old != 0 else 0
+                                    qty_diff = abs(qty_new - qty_old) / qty_old if qty_old != 0 else 0
+                                    differences.append(max(price_diff, qty_diff))
+                                avg_diff = sum(differences) / N
+                                if avg_diff > 0.5:
+                                    worker_logger.info(f"New histogram buy orders differ from existing by {avg_diff*100:.2f}%, keeping existing buy orders.")
+                                    new_orders = old_orders
+                                    new_order_length = existing_gem.buy_order_length
+                        except Exception as e:
+                            worker_logger.warning(f"Error comparing buy orders: {e}")
+                    
+                    buy_orders = str(new_orders)
+                    
                     gem = Gem(
                         name=gem_name,
                         buy_orders=buy_orders,
-                        buy_order_length=buy_order_length,
+                        buy_order_length=new_order_length,
                         timestamp=current_time
                     )
                     self.db_repository.save_gem(gem)
