@@ -10,6 +10,7 @@ from ..models.gem import Gem
 from ..utils.parsing import process_histogram
 from ..utils.worker_logger import WorkerLogger
 import json
+import aiohttp
 
 class GemService:
     def __init__(self, db_repository: DatabaseRepository):
@@ -17,6 +18,7 @@ class GemService:
         self.logger = logging.getLogger('gem_service')
         
     async def fetch_gems(self, proxies: List[str]):
+        # Create a single shared queue for gem tasks
         gem_task_queue = asyncio.Queue()
         
         # Load both gem types
@@ -37,93 +39,91 @@ class GemService:
             if full_name in prismatic_ids:
                 await gem_task_queue.put((gem_name, prismatic_ids[full_name]["id"]))
         
-        # Create workers with delay between each
-        workers = []
-        for i, proxy in enumerate(proxies):
-            worker = self._worker(gem_task_queue, proxy)
-            workers.append(worker)
-            if i < len(proxies) - 1:  # Don't delay after the last worker
-                await asyncio.sleep(2)  # Stagger worker starts
+        # Add stop signals (None) for each proxy worker
+        for _ in proxies:
+            await gem_task_queue.put(None)
         
+        # Create workers
+        workers = [
+            self._worker(gem_task_queue, proxy)
+            for proxy in proxies
+        ]
+        
+        # Wait for all workers to finish
         await asyncio.gather(*workers)
-        
+
     async def _worker(self, gem_task_queue: asyncio.Queue, proxy: str):
         worker_logger = WorkerLogger('gem_service', proxy)
-        max_retries = 3
-        retry_delay = 5
+        client = SteamPublicClient(proxy=proxy)
         items_processed = 0
         current_time = datetime.now().timestamp()
         
-        while not gem_task_queue.empty():
-            client = None
-            try:
-                client = SteamPublicClient(proxy=proxy)
-                gem_name, item_name_id = await gem_task_queue.get()
+        try:
+            while True:
+                task = await gem_task_queue.get()
+                if task is None:
+                    # Stop signal
+                    gem_task_queue.task_done()
+                    break
+                
+                gem_name, item_name_id = task
                 worker_logger.set_item(gem_name)
                 
-                # Retry logic for histogram fetching
-                for attempt in range(max_retries):
+                try:
+                    worker_logger.info("Fetching histogram")
                     try:
-                        worker_logger.info("Fetching histogram")
                         histogram = await client.get_item_orders_histogram(item_name_id)
-                        
-                        if isinstance(histogram, tuple):
-                            histogram = histogram[0]
-                        
-                        parsed_data = process_histogram(histogram)
-                        buy_orders = "[]"
-                        buy_order_length = 0
-                        
-                        if parsed_data is not None and parsed_data["buy_orders"]:
-                            buy_orders = str(parsed_data["buy_orders"])
-                            buy_order_length = parsed_data["buy_order_length"]
-                            worker_logger.info(f"Successfully parsed histogram: {buy_order_length} buy orders")
-                        else:
-                            worker_logger.info("No buy orders found in histogram")
-                        
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        # Proxy or networking error, requeue task for other workers
+                        worker_logger.error(f"Connection error: {str(e)}; requeuing task.")
+                        await gem_task_queue.put((gem_name, item_name_id))
+                        break  # Exit this worker so other proxies can pick up tasks
+                    except (TypeError, ValueError, AttributeError) as e:
+                        # Save empty buy orders for data parse errors
+                        worker_logger.error(f"Invalid histogram data: {str(e)}")
                         gem = Gem(
                             name=gem_name,
-                            buy_orders=buy_orders,
-                            buy_order_length=buy_order_length,
+                            buy_orders="[]",
+                            buy_order_length=0,
                             timestamp=current_time
                         )
                         self.db_repository.save_gem(gem)
-                        break  # Success, exit retry loop
+                        continue
+                    
+                    # Process the histogram
+                    if isinstance(histogram, tuple):
+                        histogram = histogram[0]
+                    
+                    parsed_data = process_histogram(histogram)
+                    buy_orders = "[]"
+                    buy_order_length = 0
+                    
+                    if parsed_data and parsed_data["buy_orders"]:
+                        buy_orders = str(parsed_data["buy_orders"])
+                        buy_order_length = parsed_data["buy_order_length"]
+                        worker_logger.info(f"Successfully parsed histogram: {buy_order_length} buy orders")
+                    else:
+                        worker_logger.info("No buy orders found in histogram")
+                    
+                    gem = Gem(
+                        name=gem_name,
+                        buy_orders=buy_orders,
+                        buy_order_length=buy_order_length,
+                        timestamp=current_time
+                    )
+                    self.db_repository.save_gem(gem)
                         
-                    except (TypeError, ValueError, AttributeError) as e:
-                        worker_logger.error(f"Invalid histogram data: {str(e)}")
-                        break  # Data parsing error, no retry needed
-                    except Exception as e:
-                        if attempt < max_retries - 1:
-                            worker_logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
-                            await asyncio.sleep(retry_delay * (attempt + 1))
-                            # Create new client for retry
-                            if client:
-                                await client.session.close()
-                            client = SteamPublicClient(proxy=proxy)
-                        else:
-                            worker_logger.error(f"Failed after {max_retries} attempts: {str(e)}")
-                
-                # Rate limiting
-                items_processed += 1
-                if items_processed >= 2:  # Reduced from 3 to 2 for more conservative rate limiting
-                    delay = settings.REQUEST_DELAY * 1.5  # Increased delay
-                    worker_logger.debug(f"Sleeping for {delay}s")
-                    await asyncio.sleep(delay)
-                    items_processed = 0
-                else:
-                    # Small delay between requests even within the batch
-                    await asyncio.sleep(1)
-                
-            except Exception as e:
-                worker_logger.error(f"Unexpected error in worker: {str(e)}", exc_info=True)
-            finally:
-                if client:
-                    try:
-                        await client.session.close()
-                    except Exception as e:
-                        worker_logger.error(f"Error closing client session: {str(e)}")
-                if not gem_task_queue.empty():
+                except Exception as e:
+                    worker_logger.error(f"Error processing gem: {str(e)}", exc_info=True)
+                finally:
+                    # Mark the task as done
                     gem_task_queue.task_done()
+                    items_processed += 1
+                    if items_processed >= 3:
+                        worker_logger.debug(f"Sleeping for {settings.REQUEST_DELAY}s")
+                        await asyncio.sleep(settings.REQUEST_DELAY)
+                        items_processed = 0
         
-        worker_logger.info("Worker finished")
+        finally:
+            await client.session.close()
+            worker_logger.info("Worker finished")
