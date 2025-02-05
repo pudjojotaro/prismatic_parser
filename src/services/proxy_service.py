@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import math
+import random
 from typing import List, Tuple
 from proxy_api import ProxyAPI  # type: ignore
 from ..config.settings import settings
@@ -38,6 +39,7 @@ class ProxyService:
         return f"{proxy['protocol']}://{proxy['ip']}:{proxy['port']}"
 
     def distribute_proxies(self, proxies: List[str]) -> Tuple[List[str], List[str]]:
+        random.shuffle(proxies)  # Randomize proxies before distribution
         total_proxies = len(proxies)
         gem_proxy_count = math.ceil(total_proxies * settings.GEM_PROXY_RATIO)
         gem_proxies = proxies[:gem_proxy_count]
