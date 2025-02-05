@@ -67,29 +67,45 @@ class ItemService:
                     break
                     
                 worker_logger.set_item(item)
-                try:
-                    # Add delay between requests
-                    await asyncio.sleep(1)
-                    
-                    worker_logger.info(f"Fetching total listings for item: {item}")
-                    total_count = await self._fetch_total_listings(client, item)
-                    worker_logger.info(f"Found {total_count} total listings")
-                    
-                    if total_count > 0:
-                        # Split into batches of 100 (matching test.py)
-                        for start in range(0, total_count, 100):
-                            batch = {
-                                'item': item,
-                                'start': start,
-                                'count': min(100, total_count - start)
-                            }
-                            await output_queue.put(batch)
-                            
-                except Exception as e:
-                    worker_logger.error(f"Error fetching total listings: {e}", exc_info=True)
-                finally:
-                    input_queue.task_done()
-                    
+                # Added retry mechanism similar to gem_service for proxy failures
+                retries = 0
+                max_retries = 3
+                success = False
+                while retries < max_retries and not success:
+                    try:
+                        # Add delay between requests
+                        await asyncio.sleep(1)
+                        
+                        worker_logger.info(f"Fetching total listings for item: {item}")
+                        total_count = await self._fetch_total_listings(client, item)
+                        worker_logger.info(f"Found {total_count} total listings")
+                        
+                        if total_count > 0:
+                            # Split into batches of 100 (matching test.py)
+                            for start in range(0, total_count, 100):
+                                batch = {
+                                    'item': item,
+                                    'start': start,
+                                    'count': min(100, total_count - start)
+                                }
+                                await output_queue.put(batch)
+                        # Mark as successful even if total_count is 0 (could be a valid result)
+                        success = True
+                    except Exception as e:
+                        retries += 1
+                        worker_logger.error(f"Error fetching total listings for item: {item} on attempt {retries}: {e}", exc_info=True)
+                        if retries < max_retries:
+                            backoff = (2 ** (retries - 1)) * 2  # exponential backoff
+                            worker_logger.info(f"Waiting {backoff}s before retrying item: {item}")
+                            await asyncio.sleep(backoff)
+                        else:
+                            worker_logger.error(f"Max retries reached for item: {item}, requeuing task.")
+                            # Requeue the task for other proxies
+                            await input_queue.put(item)
+                    finally:
+                        # This line remains untouched: mark the original task as done
+                        input_queue.task_done()
+                        
         except Exception as e:
             worker_logger.error(f"Total listings fetcher encountered an error: {e}", exc_info=True)
             
@@ -109,14 +125,35 @@ class ItemService:
                     break
 
                 worker_logger.set_item(batch['item'])
-                try:
-                    listings = await self._fetch_listings_for_item_range(
-                        client, 
-                        batch['item'], 
-                        batch['start']
-                    )
+                # Added retry mechanism similar to gem_service for proxy failures in processing a batch
+                retries = 0
+                max_retries = 3
+                success = False
+                df = None
+                while retries < max_retries and not success:
+                    try:
+                        listings = await self._fetch_listings_for_item_range(client, batch['item'], batch['start'])
+                        # Process listings using the existing parser
+                        df = parse_market_listings(listings)
+                        success = True
+                    except Exception as e:
+                        retries += 1
+                        worker_logger.error(f"Error fetching listings for item '{batch['item']}' at start {batch['start']} on attempt {retries}: {e}", exc_info=True)
+                        if retries < max_retries:
+                            backoff = (2 ** (retries - 1)) * 2  # exponential backoff
+                            worker_logger.info(f"Waiting {backoff}s before retrying batch for item: {batch['item']}")
+                            await asyncio.sleep(backoff)
+                        else:
+                            worker_logger.error(f"Max retries reached for batch of item: {batch['item']}, requeuing batch.")
+                            # Requeue the failed batch for other proxy workers to try
+                            await listings_queue.put(batch)
+                            break
 
-                    df = parse_market_listings(listings)
+                if not success:
+                    listings_queue.task_done()
+                    continue
+
+                try:
                     if not df.empty:
                         worker_logger.info(f"Found {len(df)} items with gems")
                         for _, row in df.iterrows():
