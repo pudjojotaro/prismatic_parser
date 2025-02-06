@@ -21,8 +21,12 @@ class Application:
         self.alert_service = alert_service
         self.proxy_service = proxy_service
         self.logger = logging.getLogger('main')
-        
+        self._running = True  # Flag to control the main loop
+        self._main_task = None  # Reference to the running task
+        self._loop = None       # Reference to the event loop where the run() method is executing
+
     async def run(self):
+        self._main_task = asyncio.current_task()  # Store the running task
         # Start Telegram bot polling as a background task
         bot_task = asyncio.create_task(self.alert_service.run_bot())
         await self.alert_service.send_startup_message()
@@ -59,15 +63,12 @@ class Application:
 
                     self.logger.info(f"Waiting {settings.CYCLE_INTERVAL:.2f} seconds until next cycle")
                     await asyncio.sleep(settings.CYCLE_INTERVAL)
-
                 except Exception as e:
                     self.logger.error(f"Error during cycle: {str(e)}", exc_info=True)
                     await asyncio.sleep(settings.ERROR_DELAY)
-
         except asyncio.CancelledError:
             await self.alert_service.send_shutdown_message()
             self.logger.info("Received cancellation request. Shutting down...")
-            # Cancel bot task
             if not bot_task.done():
                 bot_task.cancel()
                 try:
@@ -81,6 +82,13 @@ class Application:
                 await self.proxy_service.cleanup_proxies()
             except Exception as e:
                 self.logger.error(f"Error during final cleanup: {str(e)}", exc_info=True)
+
+    def stop(self):
+        # Set the running flag to False.
+        self._running = False
+        # If the event loop and task are available, cancel the current task.
+        if self._loop and self._main_task:
+            self._loop.call_soon_threadsafe(self._main_task.cancel)
 
 async def main():
     setup_logging()
@@ -96,16 +104,19 @@ async def main():
     monitoring_service = MonitoringService(db_repository, alert_service)
     
     app = Application(item_service, gem_service, monitoring_service, alert_service, proxy_service)
-
+    
     # Create the main task
     main_task = asyncio.create_task(app.run())
+    
+    # Get the running loop and store it into the application for graceful shutdown.
+    loop = asyncio.get_running_loop()
+    app._loop = loop
 
-    # Handle Ctrl+C
+    # Handle Ctrl+C (for console runs)
     try:
         await main_task
     except KeyboardInterrupt:
         logger.info("Received exit signal (Ctrl+C). Cancelling tasks...")
-        # Cancel the main task and wait for it to complete
         main_task.cancel()
         try:
             await main_task  # This will trigger the CancelledError in app.run()
