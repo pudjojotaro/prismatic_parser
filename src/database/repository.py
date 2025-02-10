@@ -6,6 +6,7 @@ from ..models.item import Item
 from ..models.gem import Gem
 from ..models.comparison import Comparison
 import logging
+import pickle
 
 class DatabaseRepository:
     def __init__(self):
@@ -143,3 +144,39 @@ class DatabaseRepository:
             """, (start_time, end_time))
             rows = cursor.fetchall()
             return [Item(*row) for row in rows]
+
+    def save_raw_listing(self, listing_id: str, listing_obj, timestamp: float) -> None:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            pickled_data = pickle.dumps(listing_obj)
+            cursor.execute("""
+                INSERT OR REPLACE INTO raw_listings
+                (id, listing_data, fetch_timestamp)
+                VALUES (?, ?, ?)
+            """, (listing_id, pickled_data, timestamp))
+            conn.commit()
+    
+    def get_raw_listing(self, listing_id: str):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT listing_data
+                FROM raw_listings
+                WHERE id = ?
+            """, (listing_id,))
+            row = cursor.fetchone()
+            if row:
+                return pickle.loads(row[0])
+            return None
+
+    def remove_raw_listings(self, listing_ids: set) -> None:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            # SQLite doesn't support multiple values in IN clause directly
+            # so we need to create the placeholders
+            placeholders = ','.join('?' * len(listing_ids))
+            cursor.execute(f"""
+                DELETE FROM raw_listings
+                WHERE id IN ({placeholders})
+            """, tuple(listing_ids))
+            conn.commit()
