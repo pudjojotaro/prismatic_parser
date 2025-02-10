@@ -134,7 +134,7 @@ class ItemService:
                     try:
                         listings = await self._fetch_listings_for_item_range(client, batch['item'], batch['start'])
                         # Process listings using the existing parser
-                        df = parse_market_listings(listings)
+                        df, parsed_ids = parse_market_listings(listings)
                         success = True
                     except Exception as e:
                         retries += 1
@@ -184,6 +184,14 @@ class ItemService:
                                 worker_logger.error(f"Error saving item: {e}", exc_info=True)
                     else:
                         worker_logger.info("No items with gems found in this batch.")
+
+                    # New: Clean up raw listings that weren't successfully parsed
+                    if listings:  # Only if we have listings
+                        fetched_ids = {listing.id for listing in listings}
+                        ids_to_remove = fetched_ids - parsed_ids
+                        if ids_to_remove:
+                            worker_logger.info(f"Cleaning up {len(ids_to_remove)} unparsed raw listings")
+                            self.db_repository.remove_raw_listings(ids_to_remove)
 
                     listings_processed += batch['count']
                     if listings_processed >= settings.LISTINGS_BEFORE_BATCH_DELAY:
@@ -242,6 +250,15 @@ class ItemService:
                 count=settings.LISTINGS_PER_REQUEST,
                 start=start
             )
+            
+            # Store each raw listing right after fetching
+            current_time = datetime.now().timestamp()
+            for listing in listings:
+                try:
+                    self.db_repository.save_raw_listing(listing.id, listing, current_time)
+                except Exception as e:
+                    logging.error(f"Failed to store raw listing {listing.id}: {e}")
+            
             return listings
         except Exception as e:
             logging.error(f"Error fetching listings for item '{item}' at start {start}: {e}")
