@@ -121,6 +121,15 @@ class GemService:
                         try:
                             old_orders = existing_gem.parsed_buy_orders
                             if old_orders:  # if there are existing buy orders
+                                # Log the first 10 new and old buy orders for comparison
+                                worker_logger.info("First 10 New Buy Orders:")
+                                for i, (price, qty) in enumerate(new_orders[:10], 1):
+                                    worker_logger.info(f"{i}. Price: {price}, Quantity: {qty}")
+                                
+                                worker_logger.info("First 10 Old Buy Orders:")
+                                for i, (price, qty) in enumerate(old_orders[:10], 1):
+                                    worker_logger.info(f"{i}. Price: {price}, Quantity: {qty}")
+                                
                                 N = min(5, len(new_orders), len(old_orders))
                                 differences = []
                                 for i in range(N):
