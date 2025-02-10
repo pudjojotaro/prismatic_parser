@@ -1,14 +1,29 @@
-# Dota 2 Prismatic Gems Parser
+# 🎮 Dota 2 Prismatic Gems Parser
 
 ![Project Banner](./images/github-header-image.png)  
+
+<div align="center">
+
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue) 
 ![License](https://img.shields.io/badge/license-MIT-green) 
-![Status](https://img.shields.io/badge/status-Demonstration-orange)  
+![Status](https://img.shields.io/badge/status-Proof%20of%20Concept-orange)  
 ![Version](https://img.shields.io/badge/version-1.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20|%20MacOS-lightgrey)
 
-## Introduction
-**Dota 2 Prismatic Gems Parser** is a demonstration project that monitors Steam marketplace items with gems, specifically focusing on Dota 2 couriers and Arcana Items. It uses asynchronous workers running in parallel to fetch market data and analyzes the potential profitability of items by comparing their prices with the combined value of their embedded gems.
+</div>
+
+## 📖 Introduction
+**Dota 2 Prismatic Gems Parser** is a proof-of-concept project that demonstrates the technical implementation of monitoring Steam marketplace items with gems, specifically focusing on Dota 2 couriers and Arcana Items. It uses asynchronous workers running in parallel to fetch market data and analyzes the potential profitability of items by comparing their prices with the combined value of their embedded gems.
+
+> ⚠️ **Important Note**: This repository is a demonstration of the project's architecture and core components. The published version is incomplete and missing several critical components and configuration files for security reasons. While the code structure and logic are preserved, the project cannot be run as-is without additional implementation of supporting services and sensitive configurations.
+
+### 🌟 Key Features
+- 🔄 Asynchronous market data fetching
+- 💎 Gem value analysis
+- 📊 Price monitoring
+- 🤖 Automated profitability checks
+- 📱 Telegram notifications
+- 🔒 Proxy support for reliable data collection
 
 ---
 
