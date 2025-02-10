@@ -9,6 +9,7 @@ def parse_market_listings(market_listings):
     logger = logging.getLogger('parsing')
     logger.info(f"Starting to parse {len(market_listings)} market listings")
     data = []
+    parsed_listing_ids = set()
     
     for listing in market_listings:
         try:
@@ -66,11 +67,12 @@ def parse_market_listings(market_listings):
             if listing_data["Ethereal Gem"] or listing_data["Prismatic Gem"]:
                 logger.info(f"Found item with gems: {item_description} - E: {listing_data['Ethereal Gem']}, P: {listing_data['Prismatic Gem']}")
                 data.append(listing_data)
+                parsed_listing_ids.add(listing.id)
         except Exception as e:
             logger.error(f"Error processing listing {listing.id}: {str(e)}", exc_info=True)
     
     logger.info(f"Finished parsing. Found {len(data)} items with gems")
-    return pd.DataFrame(data)
+    return pd.DataFrame(data), parsed_listing_ids
 
 
 def parse_gem_text_both_gems(gem_text):
