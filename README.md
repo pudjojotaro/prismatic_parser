@@ -134,7 +134,7 @@
 
 ## Database Schema
 
-The database contains three main tables:
+The database contains four main tables:
 
 ### Items Table
 | Column           | Type   | Description                                     |
@@ -165,6 +165,13 @@ The database contains three main tables:
 | `ethereal_gem_price` | REAL    | Price of the associated ethereal gem.         |
 | `combined_gem_price` | REAL    | Combined price of both gems.                  |
 | `expected_profit`    | REAL    | Calculated expected profit.                   |
+
+### Raw Listings Table
+| Column          | Type    | Description                                        |
+|-----------------|---------|---------------------------------------------------|
+| `id`           | TEXT    | Unique identifier for the listing (Primary Key).   |
+| `listing_data` | BLOB    | Serialized raw listing object from Steam Market.   |
+| `fetch_timestamp` | REAL  | Timestamp when the listing was fetched.           |
 
 ---
 
