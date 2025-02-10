@@ -42,5 +42,12 @@ def init_db():
         fetch_end_timestamp REAL
     )
     """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS raw_listings (
+        id TEXT PRIMARY KEY,
+        listing_data BLOB,
+        fetch_timestamp REAL
+    )
+    """)
     conn.commit()
     conn.close()
