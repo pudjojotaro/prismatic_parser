@@ -131,33 +131,31 @@ class GemService:
                                     worker_logger.info(f"{i}. Price: {price}, Quantity: {qty}")
                                 
                                 N = min(5, len(new_orders), len(old_orders))
-                                differences = []
+                                price_differences = []
                                 for i in range(N):
                                     price_old, qty_old = old_orders[i]
                                     price_new, qty_new = new_orders[i]
                                     
-                                    # Calculate relative differences with more precise handling
+                                    # Calculate price difference
                                     price_diff = abs(price_new - price_old) / max(abs(price_old), abs(price_new)) if price_old != 0 or price_new != 0 else 0
-                                    qty_diff = abs(qty_new - qty_old) / max(abs(qty_old), abs(qty_new)) if qty_old != 0 or qty_new != 0 else 0
                                     
-                                    # Log detailed comparison for each order
-                                    worker_logger.info(f"Order {i+1} Comparison:")
-                                    worker_logger.info(f"  Old - Price: {price_old}, Quantity: {qty_old}")
-                                    worker_logger.info(f"  New - Price: {price_new}, Quantity: {qty_new}")
+                                    # Log detailed price comparison for each order
+                                    worker_logger.info(f"Order {i+1} Price Comparison:")
+                                    worker_logger.info(f"  Old - Price: {price_old}")
+                                    worker_logger.info(f"  New - Price: {price_new}")
                                     worker_logger.info(f"  Price Difference: {price_diff*100:.2f}%")
-                                    worker_logger.info(f"  Quantity Difference: {qty_diff*100:.2f}%")
                                     
-                                    differences.append(max(price_diff, qty_diff))
+                                    price_differences.append(price_diff)
 
-                                # Calculate average difference
-                                avg_diff = sum(differences) / N if differences else 0
+                                # Calculate average price difference
+                                avg_price_diff = sum(price_differences) / N if price_differences else 0
 
-                                # More precise logging of average difference
-                                worker_logger.info(f"Average Order Difference: {avg_diff*100:.2f}%")
+                                # More precise logging of average price difference
+                                worker_logger.info(f"Average Price Difference: {avg_price_diff*100:.2f}%")
 
-                                # Adjust threshold for considering orders different
-                                if avg_diff > 0.05:  # Changed from 0.5 to 0.05 (5%)
-                                    worker_logger.info(f"New histogram buy orders differ from existing by {avg_diff*100:.2f}%, keeping existing buy orders.")
+                                # Adjust threshold for considering prices different
+                                if avg_price_diff > 0.05:  # 5% price change threshold
+                                    worker_logger.info(f"New histogram buy orders differ from existing by {avg_price_diff*100:.2f}%, keeping existing buy orders.")
                                     new_orders = old_orders
                                     new_order_length = existing_gem.buy_order_length
                         except Exception as e:
