@@ -12,25 +12,37 @@ class ProxyService:
         self.current_proxy_ids = []
 
     async def get_proxies(self) -> List[str]:
+        max_wait_time = 3600  # 1 hour maximum wait
+        initial_wait = 30  # Start with 30 seconds
+        current_wait = initial_wait
+
         while True:
             try:
                 proxy_data = self.proxy_api.get_all_available_proxies()
-                if not proxy_data:
-                    logging.warning("No available proxies found.")
-                    return []
+                if proxy_data:
+                    proxy_strings = []
+                    self.current_proxy_ids = []
 
-                proxy_strings = []
-                self.current_proxy_ids = []
+                    for proxy in proxy_data:
+                        formatted_proxy = self._format_proxy(proxy)
+                        proxy_strings.append(formatted_proxy)
+                        self.current_proxy_ids.append(proxy['id'])
 
-                for proxy in proxy_data:
-                    formatted_proxy = self._format_proxy(proxy)
-                    proxy_strings.append(formatted_proxy)
-                    self.current_proxy_ids.append(proxy['id'])
+                    # Reset wait time on successful proxy fetch
+                    current_wait = initial_wait
+                    return proxy_strings
 
-                return proxy_strings
+                # No proxies available
+                logging.warning(f"No available proxies. Waiting {current_wait} seconds.")
+                await asyncio.sleep(current_wait)
+
+                # Exponential backoff, but cap at max_wait_time
+                current_wait = min(current_wait * 2, max_wait_time)
+
             except Exception as e:
                 logging.error(f"Error fetching proxies: {e}")
-                await asyncio.sleep(300)
+                await asyncio.sleep(current_wait)
+                current_wait = min(current_wait * 2, max_wait_time)
 
     def _format_proxy(self, proxy: dict) -> str:
         """Format proxy dictionary into URL string."""
