@@ -154,7 +154,7 @@ class GemService:
                                 worker_logger.info(f"Average Price Difference: {avg_price_diff*100:.2f}%")
 
                                 # Adjust threshold for considering prices different
-                                if avg_price_diff > 0.05:  # 5% price change threshold
+                                if avg_price_diff > 0.5:  # 50% price change threshold
                                     worker_logger.info(f"New histogram buy orders differ from existing by {avg_price_diff*100:.2f}%, keeping existing buy orders.")
                                     new_orders = old_orders
                                     new_order_length = existing_gem.buy_order_length
