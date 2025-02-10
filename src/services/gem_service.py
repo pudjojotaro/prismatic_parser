@@ -130,7 +130,13 @@ class GemService:
                                 for i, (price, qty) in enumerate(old_orders[:10], 1):
                                     worker_logger.info(f"{i}. Price: {price}, Quantity: {qty}")
                                 
+                                # Determine the number of orders to compare
                                 N = min(10, len(new_orders), len(old_orders))
+
+                                # If lengths are different, log a warning
+                                if len(new_orders) != len(old_orders):
+                                    worker_logger.warning(f"Order list lengths differ. New orders: {len(new_orders)}, Old orders: {len(old_orders)}")
+
                                 price_differences = []
                                 for i in range(N):
                                     price_old, qty_old = old_orders[i]
