@@ -130,7 +130,7 @@ class GemService:
                                 for i, (price, qty) in enumerate(old_orders[:10], 1):
                                     worker_logger.info(f"{i}. Price: {price}, Quantity: {qty}")
                                 
-                                N = min(5, len(new_orders), len(old_orders))
+                                N = min(10, len(new_orders), len(old_orders))
                                 price_differences = []
                                 for i in range(N):
                                     price_old, qty_old = old_orders[i]
