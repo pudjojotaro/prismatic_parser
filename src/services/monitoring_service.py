@@ -8,6 +8,7 @@ from ..models.gem import Gem
 from ..models.comparison import Comparison
 from ..services.alert_service import AlertService
 from datetime import datetime
+from ..utils.steam_client import SteamMarketClient
 
 class MonitoringService:
     def __init__(self, db_repository: DatabaseRepository, alert_service: AlertService):
@@ -101,6 +102,10 @@ class MonitoringService:
         self.logger.debug(
             f"Compared item {item.id}: Expected Profit = {expected_profit:.2f}, Is Profitable = {is_profitable}"
         )
+        
+        if comparison.is_profitable:
+            await self.buy_profitable_item(comparison)
+        
         return comparison
 
     async def _get_gem_price(self, gem_name: Optional[str]) -> Optional[float]:
@@ -118,3 +123,43 @@ class MonitoringService:
             return None
         
         return buy_orders[0][0]
+
+    async def buy_profitable_item(self, comparison: Comparison) -> bool:
+        self.logger.info(f"Attempting to buy profitable item {comparison.item_id}")
+        
+        # Get the raw listing from database
+        raw_listing = self.db_repository.get_raw_listing(comparison.item_id)
+        if not raw_listing:
+            self.logger.error(f"Raw listing not found for item {comparison.item_id}")
+            return False
+        
+        try:
+            # Initialize Steam client
+            steam_client = SteamMarketClient()
+            await steam_client.initialize()
+            
+            # Attempt to buy the listing
+            wallet_info = await steam_client.buy_listing(raw_listing)
+            
+            # Log success and notify
+            self.logger.info(f"Successfully bought item {comparison.item_id}. Wallet info: {wallet_info}")
+            await self.alert_service.send_message(
+                f"🎉 Successfully bought profitable item!\n"
+                f"Item: {raw_listing.item.description.market_name}\n"
+                f"Price: {comparison.item_price}\n"
+                f"Expected Profit: {comparison.expected_profit}"
+            )
+            return True
+        
+        except Exception as e:
+            self.logger.error(f"Failed to buy item {comparison.item_id}: {e}")
+            await self.alert_service.send_message(
+                f"❌ Failed to buy profitable item!\n"
+                f"Item: {comparison.item_id}\n"
+                f"Error: {str(e)}"
+            )
+            return False
+        
+        finally:
+            if steam_client:
+                await steam_client.close()
