@@ -37,4 +37,11 @@ class AlertService:
         await self.telegram_bot.event_trigger(message, "Prismatic_Parser_Bot")
         
     async def run_bot(self):
-        await self.telegram_bot.background_bot_polling()
+        await self.bot.background_bot_polling()
+
+    async def send_message(self, message: str):
+        # Unified method for sending alerts
+        try:
+            await self.bot.send_message(message)
+        except Exception as e:
+            logging.error(f"Failed to send alert: {e}")

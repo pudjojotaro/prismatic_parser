@@ -11,6 +11,7 @@ from ..utils.parsing import process_histogram
 from ..utils.worker_logger import WorkerLogger
 import json
 import aiohttp
+from aiosteampy import Currency
 
 class GemService:
     def __init__(self, db_repository: DatabaseRepository):
@@ -54,7 +55,7 @@ class GemService:
 
     async def _worker(self, gem_task_queue: asyncio.Queue, proxy: str):
         worker_logger = WorkerLogger('gem_service', proxy)
-        client = SteamPublicClient(proxy=proxy)
+        client = SteamPublicClient(proxy=proxy, currency=Currency.KZT)
         items_processed = 0
         current_time = datetime.now().timestamp()
         
@@ -160,7 +161,7 @@ class GemService:
                                 worker_logger.info(f"Average Price Difference: {avg_price_diff*100:.2f}%")
 
                                 # Adjust threshold for considering prices different
-                                if avg_price_diff > 0.5:  # 50% price change threshold
+                                if avg_price_diff > 1000000.5:  # 50% price change threshold
                                     worker_logger.info(f"New histogram buy orders differ from existing by {avg_price_diff*100:.2f}%, keeping existing buy orders.")
                                     new_orders = old_orders
                                     new_order_length = existing_gem.buy_order_length

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import List
-from aiosteampy import SteamPublicClient, App
+from aiosteampy import SteamPublicClient, App, Currency
 from ..config.settings import settings
 from ..config.constants import ITEMS, COURIERS, ALLOWED_GEMS_ETHEREAL, ALLOWED_GEMS_PRISMATIC
 from ..database.repository import DatabaseRepository
@@ -58,7 +58,7 @@ class ItemService:
         
     async def _total_listings_fetcher(self, input_queue: asyncio.Queue, output_queue: asyncio.Queue, proxy: str):
         worker_logger = WorkerLogger('item_service', proxy)
-        client = SteamPublicClient(proxy=proxy)
+        client = SteamPublicClient(proxy=proxy, currency=Currency.KZT)
         
         try:
             while True:
@@ -115,7 +115,7 @@ class ItemService:
             
     async def _item_processor(self, listings_queue: asyncio.Queue, proxy: str):
         worker_logger = WorkerLogger('item_service', proxy)
-        client = SteamPublicClient(proxy=proxy)
+        client = SteamPublicClient(proxy=proxy, currency=Currency.KZT)
         listings_processed = 0
 
         try:

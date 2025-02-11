@@ -84,36 +84,60 @@ class SteamMarketClient:
 
     async def buy_listing(self, listing: Any) -> dict:
         """
-        Attempt to buy a market listing.
+        Attempt to buy a market listing with retry logic.
         
         Args:
-            listing: The market listing object to purchase. Can be a MarketListing object
-                    or any object that the Steam client can process for purchase.
+            listing: The market listing object to purchase.
             
         Returns:
             dict: Wallet info after purchase
             
         Raises:
             ValueError: If client is not initialized
-            aiohttp.ClientResponseError: If the purchase request fails
-            Exception: For any other unexpected errors
+            Exception: For any unrecoverable errors after all retries
         """
         if not self.client:
             raise ValueError("Client not initialized")
 
-        try:
-            self.logger.info(f"Attempting to buy listing: {listing}")
-            wallet_info = await self.client.buy_market_listing(listing)
-            self.logger.info(f"Successfully bought the listing: {wallet_info}")
-            return wallet_info
-        except aiohttp.ClientResponseError as e:
-            self.logger.error(
-                f"Failed to buy listing. Status: {e.status}, Message: {e.message}, URL: {e.request_info.url}"
-            )
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error while buying listing: {str(e)}")
-            raise
+        max_retries = 3
+        base_delay = 2  # Base delay in seconds
+        
+        for attempt in range(max_retries):
+            try:
+                self.logger.info(f"Attempting to buy listing (attempt {attempt + 1}/{max_retries}): {listing}")
+                wallet_info = await self.client.buy_market_listing(listing)
+                self.logger.info(f"Successfully bought the listing: {wallet_info}")
+                return wallet_info
+                
+            except aiohttp.ClientResponseError as e:
+                # Handle specific HTTP errors
+                if e.status == 502:  # Bad Gateway
+                    if attempt < max_retries - 1:  # If not the last attempt
+                        delay = base_delay * (2 ** attempt)  # Exponential backoff
+                        self.logger.warning(
+                            f"502 Bad Gateway error (attempt {attempt + 1}/{max_retries}). "
+                            f"Retrying in {delay} seconds... Error: {e}"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                
+                self.logger.error(
+                    f"Failed to buy listing. Status: {e.status}, Message: {e.message}, "
+                    f"URL: {e.request_info.url}"
+                )
+                raise
+                
+            except Exception as e:
+                self.logger.error(f"Unexpected error while buying listing: {str(e)}")
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    self.logger.warning(f"Retrying in {delay} seconds...")
+                    await asyncio.sleep(delay)
+                    continue
+                raise
+
+        # If we get here, all retries failed
+        raise Exception(f"Failed to buy listing after {max_retries} attempts")
 
     async def close(self) -> None:
         """Close the client session."""
