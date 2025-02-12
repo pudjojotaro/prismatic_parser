@@ -13,6 +13,7 @@ class AlertService:
             user_id=settings.CHAT_ID,
             merge_pattern="💤 No profitable items found between"
         )
+        self.logger = logging.getLogger('alert_service')
         
     async def send_startup_message(self):
         await self.telegram_bot.event_trigger(Messages.START, "Prismatic_Parser_Bot")
@@ -35,13 +36,27 @@ class AlertService:
             comparison.item_id
         )
         await self.telegram_bot.event_trigger(message, "Prismatic_Parser_Bot")
-        
+
+    async def send_purchase_success(self, item_id: str, item_name: str, price: float):
+        message = Messages.PURCHASE_SUCCESS.format(
+            item_name,
+            price,
+            item_id
+        )
+        await self.telegram_bot.event_trigger(message, "Prismatic_Parser_Bot")
+
+    async def send_purchase_failed(self, item_id: str, error_message: str):
+        message = Messages.PURCHASE_FAILED.format(
+            item_id,
+            error_message
+        )
+        await self.telegram_bot.event_trigger(message, "Prismatic_Parser_Bot")
+
     async def run_bot(self):
-        await self.bot.background_bot_polling()
+        await self.telegram_bot.background_bot_polling()
 
     async def send_message(self, message: str):
-        # Unified method for sending alerts
         try:
-            await self.bot.send_message(message)
+            await self.telegram_bot.event_trigger(message, "Prismatic_Parser_Bot")
         except Exception as e:
-            logging.error(f"Failed to send alert: {e}")
+            self.logger.error(f"Failed to send alert: {e}")

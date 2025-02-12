@@ -1,6 +1,6 @@
 class Messages:
     # App Status
-    START = "🚀 Prismatic Parser Bot Starting!\n📡 Initializing services...\n🔌 Connecting to API\n✅ Ready to monitor items"
+    START = "🚀 Prismatic Parser Bot Started\n✨ Monitoring market for profitable items..."
     SHUTDOWN = "🛑 Prismatic Parser Bot Shutting Down\n✅ Services stopped gracefully\n👋 Goodbye!"
     
     # Monitoring Messages
@@ -29,4 +29,17 @@ class Messages:
     💵 Price: {}
     💎 Combined gem price: {}
     📈 Profit: {:.2f}
-    🔑 ID: {}""" 
+    🔑 ID: {}"""
+
+    PURCHASE_SUCCESS = """✅ Successfully purchased item!
+    📦 Name: {}
+    💵 Price: {}
+    🔑 ID: {}
+    
+⚡️ Item will appear in your Steam inventory soon!"""
+
+    PURCHASE_FAILED = """❌ Failed to purchase item!
+    🔑 ID: {}
+    ⚠️ Error: {}
+    
+Please check your Steam wallet balance and try again.""" 
